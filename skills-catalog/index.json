@@ -1,0 +1,279 @@
+{
+  "version": 1,
+  "categories": [
+    {
+      "id": "dev",
+      "zh": "开发",
+      "en": "Development"
+    },
+    {
+      "id": "content",
+      "zh": "内容创作",
+      "en": "Content"
+    },
+    {
+      "id": "marketing",
+      "zh": "营销运营",
+      "en": "Marketing"
+    },
+    {
+      "id": "office",
+      "zh": "办公文档",
+      "en": "Office docs"
+    },
+    {
+      "id": "research",
+      "zh": "研究分析",
+      "en": "Research"
+    }
+  ],
+  "skills": [
+    {
+      "id": "code-review",
+      "category": "dev",
+      "path": "dev/code-review",
+      "zh": {
+        "name": "代码审查清单",
+        "description": "审查代码改动时用：按严重程度检查正确性、安全、性能、可读性，并给出具体修改建议"
+      },
+      "en": {
+        "name": "Code review checklist",
+        "description": "Use when reviewing code changes: check correctness, security, performance and readability by severity, with concrete fixes"
+      }
+    },
+    {
+      "id": "git-commit",
+      "category": "dev",
+      "path": "dev/git-commit",
+      "zh": {
+        "name": "写好提交说明",
+        "description": "提交代码（git commit）时用：一句话标题加说明为什么改，一个提交只做一件事"
+      },
+      "en": {
+        "name": "Good commit messages",
+        "description": "Use when committing code: a one-line summary plus why the change was made, one logical change per commit"
+      }
+    },
+    {
+      "id": "github-release",
+      "category": "dev",
+      "path": "dev/github-release",
+      "zh": {
+        "name": "发 GitHub Release",
+        "description": "发布新版本到 GitHub 时用：检查、打标签、写更新说明、上传安装包，每一步都先确认"
+      },
+      "en": {
+        "name": "Publish a GitHub release",
+        "description": "Use when publishing a new version on GitHub: checks, tag, release notes and uploading build files, confirming each step"
+      }
+    },
+    {
+      "id": "unit-tests",
+      "category": "dev",
+      "path": "dev/unit-tests",
+      "zh": {
+        "name": "写单元测试",
+        "description": "给代码写自动化测试时用：先测正常情况，再测边界和错误，测试要能真的跑起来"
+      },
+      "en": {
+        "name": "Writing unit tests",
+        "description": "Use when writing automated tests: normal cases first, then edge cases and errors, and make sure the tests actually run"
+      }
+    },
+    {
+      "id": "debugging",
+      "category": "dev",
+      "path": "dev/debugging",
+      "zh": {
+        "name": "系统化排查 bug",
+        "description": "修 bug 时用：先复现、再缩小范围找到根本原因，修完验证并防止再犯"
+      },
+      "en": {
+        "name": "Systematic debugging",
+        "description": "Use when fixing a bug: reproduce it, narrow it down to the root cause, fix, verify and prevent it coming back"
+      }
+    },
+    {
+      "id": "readme",
+      "category": "dev",
+      "path": "dev/readme",
+      "zh": {
+        "name": "写 README",
+        "description": "给项目写或改 README 时用：一句话说明是什么，然后怎么装、怎么用、怎么贡献"
+      },
+      "en": {
+        "name": "Writing a README",
+        "description": "Use when writing or updating a project's README: what it is in one sentence, then install, use and contribute"
+      }
+    },
+    {
+      "id": "xiaohongshu-post",
+      "category": "content",
+      "path": "content/xiaohongshu-post",
+      "zh": {
+        "name": "小红书笔记",
+        "description": "写小红书笔记时用：抓人的标题、口语化分段正文、话题标签，避免违禁词和夸大宣传"
+      },
+      "en": {
+        "name": "Xiaohongshu (RED) post",
+        "description": "Use when writing a Xiaohongshu post: catchy title, conversational body, hashtags, no banned or exaggerated claims"
+      }
+    },
+    {
+      "id": "wechat-article",
+      "category": "content",
+      "path": "content/wechat-article",
+      "zh": {
+        "name": "公众号文章",
+        "description": "写微信公众号文章时用：标题、导语、小标题分段、金句和结尾引导，适合手机阅读"
+      },
+      "en": {
+        "name": "WeChat article",
+        "description": "Use when writing a WeChat Official Account article: title, lead, sections with subheadings, and a closing call to action, readable on a phone"
+      }
+    },
+    {
+      "id": "short-video-script",
+      "category": "content",
+      "path": "content/short-video-script",
+      "zh": {
+        "name": "短视频脚本",
+        "description": "写抖音、视频号、Reels 等短视频脚本时用：3 秒钩子、分镜表、口播台词和结尾引导"
+      },
+      "en": {
+        "name": "Short video script",
+        "description": "Use when writing scripts for TikTok, Reels or Shorts: a 3-second hook, shot table, voice-over lines and a call to action"
+      }
+    },
+    {
+      "id": "seo-blog-post",
+      "category": "content",
+      "path": "content/seo-blog-post",
+      "zh": {
+        "name": "SEO 博客文章",
+        "description": "写要被搜索引擎找到的博客文章时用：关键词、标题结构、元描述和内部链接"
+      },
+      "en": {
+        "name": "SEO blog post",
+        "description": "Use when writing a blog post meant to rank in search: keyword, heading structure, meta description and internal links"
+      }
+    },
+    {
+      "id": "competitor-analysis",
+      "category": "marketing",
+      "path": "marketing/competitor-analysis",
+      "zh": {
+        "name": "竞品分析",
+        "description": "分析竞争对手时用：上网查资料，按产品、价格、渠道、内容对比，最后给出可执行的建议"
+      },
+      "en": {
+        "name": "Competitor analysis",
+        "description": "Use when analysing competitors: research online, compare product, price, channels and content, and end with actionable advice"
+      }
+    },
+    {
+      "id": "content-calendar",
+      "category": "marketing",
+      "path": "marketing/content-calendar",
+      "zh": {
+        "name": "内容排期表",
+        "description": "规划一段时间的发布计划时用：按平台和日期排好主题、形式和负责人"
+      },
+      "en": {
+        "name": "Content calendar",
+        "description": "Use when planning posts over a period: topics, formats and owners laid out by platform and date"
+      }
+    },
+    {
+      "id": "ad-copy-variants",
+      "category": "marketing",
+      "path": "marketing/ad-copy-variants",
+      "zh": {
+        "name": "广告文案多版本",
+        "description": "写广告文案时用：针对不同卖点和人群写多个版本，方便测试哪个效果好"
+      },
+      "en": {
+        "name": "Ad copy variants",
+        "description": "Use when writing ad copy: several versions for different angles and audiences, ready to A/B test"
+      }
+    },
+    {
+      "id": "meeting-minutes",
+      "category": "office",
+      "path": "office/meeting-minutes",
+      "zh": {
+        "name": "会议纪要",
+        "description": "整理会议记录时用：结论、待办（谁、做什么、什么时候）、未决问题，一页看完"
+      },
+      "en": {
+        "name": "Meeting minutes",
+        "description": "Use when writing up a meeting: decisions, action items (who, what, by when) and open questions on one page"
+      }
+    },
+    {
+      "id": "weekly-report",
+      "category": "office",
+      "path": "office/weekly-report",
+      "zh": {
+        "name": "周报",
+        "description": "写工作周报时用：本周完成、进行中、下周计划、风险和需要的支持，用事实和数字说话"
+      },
+      "en": {
+        "name": "Weekly report",
+        "description": "Use when writing a weekly status report: done, in progress, next week, risks and help needed, with facts and numbers"
+      }
+    },
+    {
+      "id": "business-email",
+      "category": "office",
+      "path": "office/business-email",
+      "zh": {
+        "name": "商务邮件",
+        "description": "写工作邮件时用：主题说清楚目的、第一句给结论、明确要对方做什么和什么时候"
+      },
+      "en": {
+        "name": "Business email",
+        "description": "Use when writing a work email: a clear subject, the point in the first sentence, and a clear ask with a deadline"
+      }
+    },
+    {
+      "id": "web-research-report",
+      "category": "research",
+      "path": "research/web-research-report",
+      "zh": {
+        "name": "上网调研报告",
+        "description": "需要查资料写报告时用：多方搜索、交叉核实、注明每条来源和日期，区分事实和推测"
+      },
+      "en": {
+        "name": "Web research report",
+        "description": "Use when a report needs research: search several sources, cross-check, cite every source with its date, separate fact from opinion"
+      }
+    },
+    {
+      "id": "data-summary",
+      "category": "research",
+      "path": "research/data-summary",
+      "zh": {
+        "name": "数据分析摘要",
+        "description": "拿到表格或 CSV 数据要出结论时用：先检查数据，再算关键指标，用表格和几句话讲清楚发现"
+      },
+      "en": {
+        "name": "Data summary",
+        "description": "Use when turning a table or CSV into findings: check the data first, compute key numbers, explain the findings in tables and plain words"
+      }
+    },
+    {
+      "id": "news-briefing",
+      "category": "research",
+      "path": "research/news-briefing",
+      "zh": {
+        "name": "每日新闻简报",
+        "description": "整理某个领域的最新动态时用：上网查当天或本周的新闻，挑重点、一句话总结、附来源"
+      },
+      "en": {
+        "name": "News briefing",
+        "description": "Use when summarising the latest news in a field: search today's or this week's news, pick what matters, one line each, with sources"
+      }
+    }
+  ]
+}

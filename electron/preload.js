@@ -60,6 +60,8 @@ contextBridge.exposeInMainWorld("desktop", {
     importFolder: () => ipcRenderer.invoke("skills:importFolder"),
     pickFiles: () => ipcRenderer.invoke("skills:pickFiles"),
     openDir: () => ipcRenderer.invoke("skills:openDir"),
+    store: () => ipcRenderer.invoke("skills:store"),
+    install: (id, lang) => ipcRenderer.invoke("skills:install", id, lang),
   },
   // 内置本地 AI
   local: {

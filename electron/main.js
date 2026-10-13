@@ -419,6 +419,8 @@ ipcMain.handle("skills:importFolder", async e => {
 });
 ipcMain.handle("skills:pickFiles", async e => { try { return { ok: true, value: await pickTextFiles(e, true) }; } catch (err) { return { ok: false, error: String(err.message || err) }; } });
 ipcMain.handle("skills:openDir", () => { shell.openPath(skills.dir()); return true; });
+ipcMain.handle("skills:store", () => skillCall(() => skills.storeList()));
+ipcMain.handle("skills:install", (_e, id, lang) => skillCall(() => skills.install(String(id), lang)));
 
 // ---- 办公室和员工：存成文件（见 office.js），用户可以增删改 ----
 const userDir = () => app.getPath("userData");

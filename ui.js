@@ -329,6 +329,7 @@ const UI = (() => {
       box.replaceChildren(el("span", "eyebrow", t("skill.title")), el("p", "set-note", t("skill.note")));
       const tools = el("div", "set-buttons skill-tools");
       tools.append(
+        button("primary small", t("store.open"), () => { editing = editing && editing.store ? null : { store: true, cat: "all", q: "" }; draw(); }),
         button("ghost small", t("skill.new"), () => { editing = { id: null, text: NEW() }; draw(); }),
         button("ghost small", t("skill.ai"), () => { editing = { ai: true }; draw(); }),
         button("ghost small", t("skill.importFolder"), async () => { const r = await api.importFolder(); if (!r.ok) return fail(r); if (r.value) await confirmImport(r.value); draw(); }),
@@ -338,6 +339,7 @@ const UI = (() => {
       box.append(tools);
       if (busy) box.append(el("p", "set-status", busy));
       if (editing && editing.ai) box.append(aiPanel());
+      if (editing && editing.store) box.append(await storePanel());
       if (editing && !editing.ai && !editing.id) box.append(editor());
       if (!items.length && !editing) box.append(el("p", "set-note", t("skill.empty")));
       for (const s of items) {
@@ -387,6 +389,58 @@ const UI = (() => {
       }), button("ghost", t("office.cancel"), () => { editing = null; draw(); }));
       form.append(el("p", "set-note", t("skill.editNote")), ta, acts);
       return form;
+    }
+
+    // 技能商店：App 自带的技能，按类别浏览、搜索，一键安装 / 卸载
+    async function storePanel() {
+      const p = el("div", "skill-store");
+      const r = await api.store();
+      if (!r.ok) { p.append(el("p", "set-status bad", t("skill.e", { error: r.error }))); return p; }
+      const { categories, skills: items } = r.value;
+      const st = editing;
+      const head = el("div", "store-head");
+      const search = el("input", "set-input");
+      search.type = "search"; search.placeholder = t("store.search"); search.value = st.q;
+      search.addEventListener("input", () => { st.q = search.value; renderList(); });
+      head.append(el("b", null, t("store.title")), search);
+      const chips = el("div", "filters store-cats");
+      const chip = (id, label, n) => {
+        const b = button("filter" + (st.cat === id ? " active" : ""), label + " " + n, () => { st.cat = id; chips.querySelectorAll(".filter").forEach(x => x.classList.toggle("active", x === b)); renderList(); });
+        return b;
+      };
+      chips.append(chip("all", t("brain.all"), items.length));
+      for (const c of categories) chips.append(chip(c.id, c[LANG] || c.en, items.filter(s => s.category === c.id).length));
+      const listBox = el("div", "store-list");
+      const L = s => s[LANG] || s.en;
+      function renderList() {
+        const q = st.q.trim().toLowerCase();
+        const shown = items.filter(s => (st.cat === "all" || s.category === st.cat) && (!q || (L(s).name + " " + L(s).description + " " + s.id).toLowerCase().includes(q)));
+        listBox.replaceChildren();
+        if (!shown.length) listBox.append(el("p", "set-note", t("brain.noMatch")));
+        for (const s of shown) {
+          const row = el("div", "store-item");
+          const who = el("div", "skill-who");
+          const cat = categories.find(c => c.id === s.category);
+          who.append(el("b", null, L(s).name), el("span", null, L(s).description));
+          const tag = el("em", "store-cat", cat ? cat[LANG] || cat.en : s.category);
+          const act = s.installed
+            ? button("ghost small", t("store.uninstall"), async () => { await api.remove(s.installed); s.installed = null; renderList(); draw(); })
+            : button("primary small", t("store.install"), async () => {
+              const res = await api.install(s.id, LANG);
+              if (!res.ok) return fail(res);
+              s.installed = res.value;
+              UI.toast(t("store.installed", { name: L(s).name }), { kind: "ok", ttl: 3000 });
+              renderList();
+              draw();
+            });
+          if (s.installed) row.classList.add("on");
+          row.append(who, tag, act);
+          listBox.append(row);
+        }
+      }
+      renderList();
+      p.append(head, chips, listBox);
+      return p;
     }
 
     function aiPanel() {

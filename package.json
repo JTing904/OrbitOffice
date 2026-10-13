@@ -36,7 +36,8 @@
       "vendor/**/*",
       "electron/**/*",
       "assets/models.js",
-      "assets/icon/icon.png"
+      "assets/icon/icon.png",
+      "skills-catalog/**/*"
     ],
     "win": {
       "target": [

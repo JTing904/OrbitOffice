@@ -138,6 +138,49 @@ function readForAgent(id, file) {
   return { skill: s, text: "Skill: " + s.name + "\n\n" + body.slice(0, 60000) + files };
 }
 
+// ---- 内置技能商店：App 自带的技能（仓库里的 skills-catalog/），按类别列出，一键安装到技能库 ----
+const CATALOG = path.join(__dirname, "..", "skills-catalog");
+function catalogIndex() {
+  try { return JSON.parse(fs.readFileSync(path.join(CATALOG, "index.json"), "utf8")); } catch (_) { return { categories: [], skills: [] }; }
+}
+// 已经装过的：SKILL.md 里记着 catalog-id
+function installedIds() {
+  const out = {};
+  for (const s of list()) {
+    try { const id = parseHead(read(s.id)).meta["catalog-id"]; if (id) out[id] = s.id; } catch (_) { /* 读不了就跳过 */ }
+  }
+  return out;
+}
+function storeList() {
+  const idx = catalogIndex();
+  const inst = installedIds();
+  return { categories: idx.categories || [], skills: (idx.skills || []).map(s => Object.assign({}, s, { installed: inst[s.id] || null })) };
+}
+// 安装：把技能文件夹复制进技能库（逐个文件复制：打包后的 App 里这些文件在 asar 里，不能整个文件夹拷贝），
+// 名字和简介换成界面语言，标记来自技能商店（不算外部）
+function install(catalogId, lang) {
+  const entry = (catalogIndex().skills || []).find(s => s.id === catalogId);
+  if (!entry || !/^[a-z0-9/-]+$/.test(entry.path)) throw new Error("unknown skill");
+  const already = installedIds()[catalogId];
+  if (already) return already;
+  const src = path.join(CATALOG, entry.path);
+  const id = uniqueId(catalogId);
+  const copy = (from, to) => {
+    fs.mkdirSync(to, { recursive: true });
+    for (const e of fs.readdirSync(from, { withFileTypes: true })) {
+      if (e.isDirectory()) copy(path.join(from, e.name), path.join(to, e.name));
+      else fs.writeFileSync(path.join(to, e.name), fs.readFileSync(path.join(from, e.name)));
+    }
+  };
+  fs.mkdirSync(base, { recursive: true });
+  copy(src, dirOf(id));
+  const text = fs.readFileSync(path.join(dirOf(id), "SKILL.md"), "utf8");
+  const L = entry[lang === "en" ? "en" : "zh"] || entry.en;
+  const head = "---\nname: " + L.name + "\ndescription: " + L.description + "\nsource: catalog\ncatalog-id: " + catalogId + "\n---\n\n";
+  fs.writeFileSync(path.join(dirOf(id), "SKILL.md"), head + parseHead(text).body + "\n", "utf8");
+  return id;
+}
+
 const dir = () => { fs.mkdirSync(base, { recursive: true }); return base; };
 
-module.exports = { init, list, read, write, remove, uniqueId, importFolder, importText, catalog, match, readForAgent, parseHead, dir };
+module.exports = { storeList, install, init, list, read, write, remove, uniqueId, importFolder, importText, catalog, match, readForAgent, parseHead, dir };
