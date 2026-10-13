@@ -29,6 +29,14 @@ function loadConfig() {
   if (config.projectDir && !fs.existsSync(config.projectDir)) config.projectDir = null;
   if (!Array.isArray(config.sources)) config.sources = [];
   if (!Array.isArray(config.connectors)) config.connectors = [];
+  // 员工默认就能上网搜索、读网页（DuckDuckGo，不用 Key）：第一次启动时自动加上；用户删掉后不再加回来
+  if (!config.webSeeded) {
+    config.webSeeded = true;
+    if (!config.connectors.some(c => /duckduckgo-mcp-server/.test(c.command || ""))) {
+      config.connectors.unshift({ id: "conn-web", name: "Web search", type: "stdio", command: "uvx duckduckgo-mcp-server", enabled: true, trusted: true, secrets: [] });
+    }
+    saveConfig();
+  }
   if (!config.caps || typeof config.caps !== "object") config.caps = { commands: false };
   if (process.env.MYAIOFFICE_PROJECT) { savedProjectDir = config.projectDir; config.projectDir = process.env.MYAIOFFICE_PROJECT; }   // 开发用：临时指定项目文件夹（不保存）
 }

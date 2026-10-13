@@ -9,6 +9,7 @@ It ships with a ready-made software team, but the team is just a set of Markdown
 ## What it does
 
 - **Real work, not a demo.** Agents list, search, read, edit and write files in your working folder. With your permission they can also run commands (tests, scripts) and use external tools through MCP connectors.
+- **Up-to-date information.** Agents search the web and read pages (DuckDuckGo, no key) for news, trends, prices and current docs, and cite their sources. Requires [uv](https://docs.astral.sh/uv/) on the computer.
 - **A team that checks itself.** Agents decide whether a teammate needs to continue, send flawed work back, and stop and say so when a task can't or shouldn't be done. Every handoff can require your approval.
 - **Build your own office.** Each agent is a `.md` file: settings at the top, the job description below. Add, edit, import or drag in agents and offices — or describe what you need in one sentence and let the AI draft the whole office.
 - **Group discussion.** Raise a topic in the group chat; several agents discuss it from their own roles, then the lead sums up and proposes tasks you can start in order with one click.

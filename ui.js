@@ -789,6 +789,7 @@ const UI = (() => {
   // 常用的连接器：选一个就把它的接法填进输入框。都不需要密钥。
   const CONN_PRESETS = [
     { key: "set.conn.p.pick", text: "" },
+    { key: "set.conn.p.search", text: "uvx duckduckgo-mcp-server" },
     { key: "set.conn.p.fetch", text: "uvx mcp-server-fetch" },
     { key: "set.conn.p.docs", text: "https://mcp.context7.com/mcp" },
     { key: "set.conn.p.browser", text: "npx -y @playwright/mcp@latest" },
