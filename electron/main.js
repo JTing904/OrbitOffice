@@ -108,6 +108,29 @@ const findSource = id => (config.sources || []).find(s => s.id === id);
 const maskKey = key => (!key ? "" : key.length <= 12 ? "•".repeat(key.length) : key.slice(0, 6) + "•".repeat(10) + key.slice(-4));
 const publicSource = s => { const key = getKey(s); return Object.assign({}, s, { hasKey: !!key, keyMask: maskKey(key), needsKey: !isLocal(s.baseUrl) }); };
 
+// ---- 用量：每家 AI 每天调用了多少次、用了多少 token；服务商在回应里告诉剩余额度时也记下来 ----
+// config.usage = { "2026-10-14": { sourceId: { calls, prompt, completion } } }，只留最近 30 天
+// config.limits = { sourceId: { remainingRequests, limitRequests, remainingTokens, limitTokens, at } }
+const dayKey = (d = new Date()) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+let usageSaveTimer = null;
+function recordUsage(source, usage, headers) {
+  const day = dayKey();
+  config.usage = config.usage || {};
+  const today = config.usage[day] = config.usage[day] || {};
+  const u = today[source.id] = today[source.id] || { calls: 0, prompt: 0, completion: 0 };
+  u.calls++;
+  if (usage) { u.prompt += Number(usage.prompt_tokens) || 0; u.completion += Number(usage.completion_tokens) || 0; }
+  const num = name => { const v = headers && headers.get(name); return v != null && v !== "" && !isNaN(Number(v)) ? Number(v) : null; };
+  const lim = { remainingRequests: num("x-ratelimit-remaining-requests"), limitRequests: num("x-ratelimit-limit-requests"),
+    remainingTokens: num("x-ratelimit-remaining-tokens"), limitTokens: num("x-ratelimit-limit-tokens") };
+  if (Object.values(lim).some(v => v != null)) { config.limits = config.limits || {}; config.limits[source.id] = Object.assign(lim, { at: Date.now() }); }
+  const days = Object.keys(config.usage).sort();
+  for (const d of days.slice(0, Math.max(0, days.length - 30))) delete config.usage[d];
+  // 每次调用都写文件太频繁：攒几秒再存
+  clearTimeout(usageSaveTimer);
+  usageSaveTimer = setTimeout(saveConfig, 3000);
+}
+
 async function callSource(source, pathname, body, timeoutMs = 60000) {
   const key = getKey(source);
   if (!key && !isLocal(source.baseUrl)) return { ok: false, error: "no-key" };
@@ -122,17 +145,31 @@ async function callSource(source, pathname, body, timeoutMs = 60000) {
     let data = null;
     try { data = JSON.parse(text); } catch (_) { /* 不是 JSON */ }
     if (Array.isArray(data)) data = data[0];   // 有的服务把错误包在数组里
+    if (body) recordUsage(source, res.ok && data && data.usage, res.headers);   // 失败的调用也算一次（同样占用额度）
     if (!res.ok) {
       const msg = data && (data.detail || data.title || (data.error && (data.error.message || data.error)));
       return { ok: false, status: res.status, error: (typeof msg === "string" ? msg : "") || text.slice(0, 200) || res.statusText };
     }
-    return { ok: true, data };
+    return { ok: true, data, usage: data && data.usage };
   } catch (e) {
     return { ok: false, error: e.name === "TimeoutError" ? "timeout" : String((e.cause && e.cause.code) || e.message || e) };
   }
 }
 
 ipcMain.handle("pool:list", () => (config.sources || []).map(publicSource));
+// 用量：今天和最近 7 天，按来源分开，外加服务商告诉我们的剩余额度
+ipcMain.handle("pool:usage", () => {
+  const sum = (a, b) => ({ calls: a.calls + b.calls, prompt: a.prompt + b.prompt, completion: a.completion + b.completion });
+  const zero = { calls: 0, prompt: 0, completion: 0 };
+  const usage = config.usage || {};
+  const today = usage[dayKey()] || {};
+  const week = {};
+  for (let i = 0; i < 7; i++) {
+    const d = usage[dayKey(new Date(Date.now() - i * 86400000))] || {};
+    for (const id in d) week[id] = sum(week[id] || zero, d[id]);
+  }
+  return { today, week, limits: config.limits || {} };
+});
 ipcMain.handle("pool:save", (_e, input) => {
   input = input || {};
   const baseUrl = String(input.baseUrl || "").trim();
@@ -368,8 +405,9 @@ ipcMain.handle("agent:available", () => ({
 ipcMain.handle("agent:run", async (e, req) => {
   req = req || {};
   const send = payload => { if (!e.sender.isDestroyed()) e.sender.send("agent:event", Object.assign({ taskId: req.taskId }, payload)); };
+  const spent = { calls: 0, prompt: 0, completion: 0 };
   try {
-    return await runAgent({
+    const res = await runAgent({
       projectDir: config.projectDir, title: String(req.title || "").slice(0, 2000),
       agentName: String(req.agentName || "Agent").slice(0, 60), agentRole: String(req.agentRole || "").slice(0, 80),
       brief: String(req.brief || "").slice(0, 1000), context: String(req.context || "").slice(0, 3000), origin: String(req.origin || "").slice(0, 600),
@@ -383,7 +421,12 @@ ipcMain.handle("agent:run", async (e, req) => {
       cancelled: () => cancelledRuns.has(req.taskId),
       connectorTools: () => mcp.agentTools(),
       callTool: mcp.callTool,
-      call: (source, pathname, body) => callSource(source, pathname, body, 90000),
+      call: async (source, pathname, body) => {
+        const r = await callSource(source, pathname, body, 90000);
+        spent.calls++;
+        if (r.usage) { spent.prompt += Number(r.usage.prompt_tokens) || 0; spent.completion += Number(r.usage.completion_tokens) || 0; }
+        return r;
+      },
       // 用不了的型号记在设置里，重启 App 后仍然有效
       coolUntil: key => (config.cool && config.cool[key]) || 0,
       cool: (key, until) => {
@@ -399,8 +442,9 @@ ipcMain.handle("agent:run", async (e, req) => {
         send(Object.assign({ type: "ask", askId: id }, question));
       }),
     });
+    return Object.assign(res, { usage: spent });
   } catch (err) {
-    return { ok: false, error: "crash", detail: String(err.message || err) };
+    return { ok: false, error: "crash", detail: String(err.message || err), usage: spent };
   }
 });
 ipcMain.on("agent:answer", (_e, id, allow) => {

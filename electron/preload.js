@@ -47,5 +47,6 @@ contextBridge.exposeInMainWorld("desktop", {
     test: id => ipcRenderer.invoke("pool:test", id),
     scan: id => ipcRenderer.invoke("pool:scan", id),
     scanStatus: id => ipcRenderer.invoke("pool:scanStatus", id),
+    usage: () => ipcRenderer.invoke("pool:usage"),
   },
 });

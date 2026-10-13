@@ -458,6 +458,7 @@ function startReal(task, a) {
     task.blocked = false;
     task.files = res.files || [];
     task.source = res.source || null;
+    task.usage = res.usage || null;
     task.result = !res.ok ? t("real.failed", { error: realError(res) })
       : res.blocked ? t("real.blocked", { reason: res.summary })
       : (task.files.length ? t("real.done.files", { summary: res.summary, files: task.files.join("、") }) : res.summary + (task.chat ? "\n\n" + t("real.done.nofiles") : ""));
@@ -550,6 +551,9 @@ function skipsDesign(cur, h) {
   const text = taskTitle(root);
   return NO_UI_WORDS.test(text) && !UI_WORDS.test(text);
 }
+
+// 用量数字的简写：1234 → 1.2k，1234567 → 1.2M
+const fmtTokens = n => (n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, "") + "M" : n >= 1e3 ? (n / 1e3).toFixed(1).replace(/\.0$/, "") + "k" : String(n || 0));
 
 function proposeHandoff(cur, a, h) {
   if (!h || !agentById(h.to) || h.to === a.id) return;

@@ -327,6 +327,7 @@ const UI = (() => {
     st.dataset.status = task.failed ? "failed" : task.status;
     meta.append(who, st);
     if (task.source) meta.append(el("span", "td-ai", t("td.ai") + "：" + task.source));
+    if (task.usage && task.usage.calls) meta.append(el("span", "td-ai", t("td.usage", { calls: task.usage.calls, tokens: fmtTokens(task.usage.prompt + task.usage.completion) })));
     head.append(meta);
     const acts = el("div", "td-actions");
     if (task.status !== "done") acts.append(button("ghost small danger", t("td.cancel"), () => cancelTask(task.id)));
@@ -661,14 +662,29 @@ const UI = (() => {
       showScan();
       const adv = el("details", "src-adv");
       adv.append(el("summary", null, t("set.ai.advanced")), line("set.ai.url", url), line("set.ai.model", modelRow), line("set.ai.tier", tier), line("set.ai.scan.label", scanRow), line("set.ai.order", order));
-      c.append(head, line("set.ai.key", keyRow), status, adv);
+      c.append(head, line("set.ai.key", keyRow), status, el("p", "set-status usage-line", usageLine(s.id)), adv);
       if (!s.needsKey) keyRow.replaceChildren(button("ghost small", t("set.ai.connect"), autoSetup));
       if (s.hasKey && s.model) say("set.ai.s.saved", { model: s.model }); else if (s.needsKey && !s.hasKey) say("set.ai.s.nokey");
       return c;
     }
 
+    // 用量：今天 / 最近 7 天，按来源分开；服务商告诉我们剩余额度时也显示
+    let usage = { today: {}, week: {}, limits: {} };
+    const usageLine = id => {
+      const d = usage.today[id], w = usage.week[id], lim = usage.limits[id];
+      const parts = [t("set.ai.usage.today", { calls: d ? d.calls : 0, tokens: fmtTokens(d ? d.prompt + d.completion : 0) }),
+        t("set.ai.usage.week", { calls: w ? w.calls : 0, tokens: fmtTokens(w ? w.prompt + w.completion : 0) })];
+      if (lim && lim.remainingRequests != null && lim.limitRequests != null) parts.push(t("set.ai.usage.left", { left: lim.remainingRequests, limit: lim.limitRequests }));
+      return parts.join(" · ");
+    };
     async function render() {
       const sources = await api.list();
+      if (api.usage) usage = await api.usage();
+      const sumOf = obj => Object.values(obj).reduce((a, u) => ({ calls: a.calls + u.calls, tokens: a.tokens + u.prompt + u.completion }), { calls: 0, tokens: 0 });
+      const td = sumOf(usage.today), wk = sumOf(usage.week);
+      total.replaceChildren(el("b", null, t("set.ai.usage.title")),
+        el("span", null, t("set.ai.usage.today", { calls: td.calls, tokens: fmtTokens(td.tokens) })),
+        el("span", null, t("set.ai.usage.week", { calls: wk.calls, tokens: fmtTokens(wk.tokens) })));
       list.replaceChildren(...sources.map((s, i) => card(s, i, sources.length)));
       if (!sources.length) list.append(el("p", "set-note", t("set.ai.empty")));
     }
@@ -681,7 +697,8 @@ const UI = (() => {
       await api.save({ name: p.name || t(p.nameKey), baseUrl: p.baseUrl, tier: "strong", enabled: true });
       render();
     }));
-    box.append(el("p", "set-note", t("set.ai.note")), list, addRow);
+    const total = el("div", "usage-total");
+    box.append(el("p", "set-note", t("set.ai.note")), total, list, addRow);
     render();
   }
 

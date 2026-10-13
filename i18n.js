@@ -141,6 +141,7 @@ const I18N = {
     "real.e.too-many-steps": "步骤太多，已停止", "real.e.crash": "程序出错（{detail}）",
     "real.badge": "真实执行", "log.realFailed": "{a} 没能完成「{title}」：{error}",
 
+    "td.usage": "用量：{calls} 次调用 · {tokens} tokens", "set.ai.usage.title": "用量", "set.ai.usage.today": "今天 {calls} 次 · {tokens} tokens", "set.ai.usage.week": "最近 7 天 {calls} 次 · {tokens} tokens", "set.ai.usage.left": "服务商显示剩余 {left}/{limit} 次请求",
     "td.title": "任务详情", "td.agent": "负责人", "td.ai": "使用的 AI", "td.status": "状态", "td.context": "上一位交接来的内容",
     "td.steps": "过程", "td.files": "写入的文件", "td.result": "结果", "td.view": "查看", "td.hide": "收起", "td.reveal": "在文件夹中显示", "td.process": "查看过程",
     "td.nosteps": "还没有开始。", "td.sim": "这个任务是模拟执行的，没有真实的过程记录。", "td.nofiles": "没有写入文件",
@@ -289,6 +290,7 @@ const I18N = {
     "real.e.too-many-steps": "Too many steps — stopped", "real.e.crash": "Internal error ({detail})",
     "real.badge": "Real run", "log.realFailed": "{a} could not finish “{title}”: {error}",
 
+    "td.usage": "Usage: {calls} calls · {tokens} tokens", "set.ai.usage.title": "Usage", "set.ai.usage.today": "Today {calls} calls · {tokens} tokens", "set.ai.usage.week": "Last 7 days {calls} calls · {tokens} tokens", "set.ai.usage.left": "Provider reports {left}/{limit} requests left",
     "td.title": "Task detail", "td.agent": "Owner", "td.ai": "AI used", "td.status": "Status", "td.context": "Handoff from the previous teammate",
     "td.steps": "Process", "td.files": "Files written", "td.result": "Result", "td.view": "View", "td.hide": "Hide", "td.reveal": "Show in folder", "td.process": "View process",
     "td.nosteps": "Not started yet.", "td.sim": "This task was simulated, so there is no real process log.", "td.nofiles": "No files written",
