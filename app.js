@@ -434,7 +434,7 @@ function clearData() {
   render(true);
 }
 function exportData() {
-  const data = { app: "MyAIOffice", version: 3, exportedAt: new Date().toISOString(), lang: LANG, mode, edits, tasks, logs };
+  const data = { app: (window.desktop && desktop.appName) || "MyAIOffice", version: 3, exportedAt: new Date().toISOString(), lang: LANG, mode, edits, tasks, logs };
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
   a.download = "myaioffice-export.json";
@@ -963,7 +963,17 @@ async function loadOffice() {
   OFFICE.fromFiles = true;
 }
 
+// 页面上显示的 App 名字（桌面 App 里从 package.json 的 productName 来；浏览器里用页面里写的默认名）
+function applyAppName() {
+  const name = window.desktop && desktop.appName;
+  if (!name) return;
+  document.title = name;
+  const upper = name.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2").toUpperCase();   // MyAIOffice → MY AI OFFICE
+  for (const sel of [".tb-title", ".hud-brand b"]) { const e = document.querySelector(sel); if (e) e.textContent = upper; }
+}
+
 async function main() {
+  applyAppName();
   load();
   setLang(LANG);
   await loadOffice();

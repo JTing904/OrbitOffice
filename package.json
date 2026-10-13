@@ -1,14 +1,63 @@
 {
   "name": "myaioffice",
+  "productName": "MyAIOffice",
   "version": "0.1.0",
-  "description": "MyAIOffice — a 3D office for your AI team",
+  "description": "A 3D office for your AI team",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
-    "models": "node tools/pack-models.js"
+    "models": "node tools/pack-models.js",
+    "icons": "node tools/make-icons.js",
+    "portable": "node tools/build-app.js",
+    "dist": "electron-builder --win --x64"
   },
   "devDependencies": {
-    "electron": "^33.0.0"
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "io.github.jting904.myaioffice",
+    "directories": {
+      "output": "dist/installer",
+      "buildResources": "assets/icon"
+    },
+    "files": [
+      "index.html",
+      "style.css",
+      "app.js",
+      "ui.js",
+      "chat.js",
+      "i18n.js",
+      "office3d.js",
+      "office-def.js",
+      "office-ui.js",
+      "package.json",
+      "vendor/**/*",
+      "electron/**/*",
+      "assets/models.js",
+      "assets/icon/icon.png"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "installerIcon": "assets/icon/icon.ico",
+      "uninstallerIcon": "assets/icon/icon.ico",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    }
   }
 }

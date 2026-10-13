@@ -14,12 +14,13 @@
 - **群聊讨论。** 在群聊里抛一个话题，几位员工从各自岗位的角度讨论，最后由主持人总结并给出任务清单，一键按顺序开始。
 - **项目记忆。** 每做完一件事都记在项目文件夹里。员工接新任务前，会先找相关的旧工作，并读团队的共享笔记；笔记太长时会自动整理成摘要。
 - **免费的 AI 池。** 可以同时接多家的 API Key（Google Gemini、NVIDIA NIM、Groq、OpenRouter、本地 Ollama，或任何兼容 OpenAI 的接口）。AgentHive 会实测每个模型，做任务用最强的、聊天用轻的，额度用完自动换下一个。
+- **内置本地 AI。** 不用 Key、不用联网：AgentHive 会检测你的显卡、内存和硬盘，推荐一个在你电脑上跑得动的开源模型（Qwen3.5，2B 到 35B），一键下载就能用，不需要装 Ollama。
 - **一切由你掌控。** 三种权限模式（手动、自动、完全访问）、按岗位限制能写的文件、危险命令一律拦下、有风险的操作先问你。API Key 加密保存在你的电脑上，界面里永远不显示完整的 Key。
 
 ## 开始使用
 
 1. 下载最新的 Windows 版本，运行安装程序。
-2. 打开 **设置 → AI 池**，选一家服务商，粘贴它的 API Key。免费的就够用：
+2. 打开 **设置 → AI 池**。可以直接启用 **本地 AI**（一键，在你的电脑上跑），或者选一家服务商、粘贴它的 API Key。免费的就够用：
    - Google Gemini：<https://aistudio.google.com/apikey>
    - NVIDIA NIM：<https://build.nvidia.com>
    - Groq：<https://console.groq.com/keys>
@@ -74,7 +75,8 @@ writes: [drafts/]
 ```bash
 npm install
 npm start                  # 开发时运行
-node tools/build-app.js    # 打包到 dist/AgentHive/，里面有 .exe
+npm run dist              # 生成安装程序，在 dist/installer/
+npm run portable          # 或者生成免安装的文件夹，在 dist/<名字>/
 ```
 
 3D 模型用 Blender 从 `tools/blender/build_models.py` 生成，再用 `node tools/pack-models.js` 打包。
@@ -84,6 +86,8 @@ node tools/build-app.js    # 打包到 dist/AgentHive/，里面有 .exe
 - 干活的质量取决于你接的模型。免费模型能用，但不是最顶尖的；多人长链条协作最容易出错。
 - 员工只能通过文本文件、命令和连接器工作，不能操作软件或网页界面、不能发社交媒体、不能做图片。
 - 需要登录授权（OAuth）的连接器暂不支持。
+- 安装程序还没有数字签名，第一次运行时 Windows 会提示「已保护你的电脑」，点「更多信息 → 仍要运行」即可。
+- 本地 AI 比云端大模型弱很多，尤其是小模型，做多步骤的长任务容易出错。
 - 安全测试员的命令拦截能挡住明显的联网操作，但它是护栏不是沙箱。运行来路不明的员工时，请用手动或自动模式。
 
 ## 许可证

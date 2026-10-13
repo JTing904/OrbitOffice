@@ -5,6 +5,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("desktop", {
   platform: process.platform,
+  appName: ipcRenderer.sendSync("app:name"),
   windowControl: action => ipcRenderer.send("window-control", action),
   notify: (title, body) => ipcRenderer.send("notify", title, body),
   getProject: () => ipcRenderer.invoke("project:get"),
@@ -47,6 +48,15 @@ contextBridge.exposeInMainWorld("desktop", {
     talkStop: () => ipcRenderer.send("agent:talkStop"),
     compose: req => ipcRenderer.invoke("agent:compose", req),
     onEvent: cb => ipcRenderer.on("agent:event", (_e, payload) => cb(payload)),
+  },
+  // 内置本地 AI
+  local: {
+    detect: () => ipcRenderer.invoke("local:detect"),
+    status: () => ipcRenderer.invoke("local:status"),
+    enable: (model, name) => ipcRenderer.invoke("local:enable", model, name),
+    disable: () => ipcRenderer.invoke("local:disable"),
+    cancel: () => ipcRenderer.invoke("local:cancel"),
+    remove: model => ipcRenderer.invoke("local:remove", model),
   },
   // AI 池：多个来源。Key 只能写入，读不回来。
   pool: {

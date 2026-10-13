@@ -705,8 +705,85 @@ const UI = (() => {
       render();
     }));
     const total = el("div", "usage-total");
-    box.append(el("p", "set-note", t("set.ai.note")), total, list, addRow);
+    const local = el("div", "local-ai");
+    box.append(el("p", "set-note", t("set.ai.note")), local, total, list, addRow);
+    if (window.desktop && desktop.local) buildLocalAi(local, () => render());
     render();
+  }
+
+  // ---- 内置本地 AI：检测电脑配置，推荐模型，一键下载并启用 ----
+  function buildLocalAi(box, onChange) {
+    let info = null, timer = null, busy = false;
+    const gb = n => (n >= 10 ? n.toFixed(0) : n.toFixed(1)) + " GB";
+    const draw = async () => {
+      clearTimeout(timer);
+      if (!box.isConnected && info) return;   // 设置页已经关掉或重建了
+      if (!info) {
+        box.replaceChildren(el("b", null, t("local.title")), el("p", "set-note", t("local.detecting")));   // 检测显卡要几秒
+        info = await desktop.local.detect();
+      }
+      const st = await desktop.local.status();
+      box.replaceChildren();
+      const head = el("div", "local-head");
+      head.append(el("b", null, t("local.title")), el("span", "local-tag", t("local.free")));
+      box.append(head, el("p", "set-note", t("local.note")));
+      if (!info.ok) { box.append(el("p", "set-status bad", t("local.e.detect", { error: info.error }))); return; }
+      const hw = info.hw;
+      box.append(el("p", "local-hw", t("local.hw", { gpu: hw.gpu ? hw.gpu.name + " (" + gb(hw.gpu.vramGB) + ")" : t("local.noGpu"), ram: gb(hw.ramGB), disk: hw.diskFreeGB != null ? gb(hw.diskFreeGB) : "?" })));
+      const phase = st.state.phase;
+      const active = st.running && st.running.model;
+      if (phase === "downloading" || phase === "starting") {
+        const bar = el("div", "local-bar");
+        const fill = el("i");
+        fill.style.width = Math.round((phase === "starting" ? 1 : st.state.progress) * 100) + "%";
+        bar.append(fill);
+        const line = el("div", "set-inline local-progress");
+        line.append(el("span", "set-status", phase === "starting" ? t("local.starting") : t("local.downloading", { text: st.state.text })));
+        if (phase === "downloading") line.append(button("ghost small", t("local.cancel"), () => desktop.local.cancel()));
+        box.append(bar, line);
+      } else if (phase === "error" && st.state.error) {
+        box.append(el("p", "set-status bad", t(st.state.error === "cancelled" ? "local.cancelled" : "local.e.failed", { error: st.state.error })));
+      }
+      if (active) {
+        const m = info.list.find(x => x.id === active);
+        box.append(el("p", "set-status local-running", t("local.running", { name: m ? m.label : active, where: t(st.running.gpu ? "local.where.gpu" : "local.where.cpu") })));
+      }
+      for (const m of info.list) {
+        const row = el("div", "local-model" + (m.id === info.recommended ? " rec" : "") + (m.fit === "no" ? " off" : ""));
+        const name = el("div", "local-name");
+        name.append(el("b", null, m.label), el("span", null, gb(m.size)));
+        if (m.id === info.recommended) name.append(el("em", "local-rec", t("local.recommended")));
+        const fit = el("span", "local-fit speed-" + m.speed, m.fit === "no" ? t("local.fit.no") : t("local.fit." + m.fit) + " · " + t("local.speed." + m.speed));
+        const acts = el("div", "set-inline");
+        const installed = m.installed || (st.binInstalled && active === m.id);
+        if (active === m.id) acts.append(button("ghost small", t("local.disable"), async () => { await desktop.local.disable(); onChange(); draw(); }));
+        else if (m.fit !== "no" && m.disk) {
+          const b = button(installed ? "ghost small" : "primary small", t(installed ? "local.enable" : "local.download"), async () => {
+            if (busy) return;
+            busy = true;
+            const pending = desktop.local.enable(m.id, t("local.sourceName"));
+            setTimeout(draw, 300);
+            const r = await pending;
+            busy = false;
+            info = await desktop.local.detect();   // 重新看哪些已经下载了
+            if (!r.ok && r.error !== "cancelled") UI.toast(t("local.e.failed", { error: r.error }), { kind: "warn", ttl: 10000 });
+            if (r.ok) UI.toast(t("local.ready", { name: m.label }), { kind: "ok", ttl: 6000 });
+            onChange();
+            draw();
+          });
+          b.disabled = phase === "downloading" || phase === "starting";
+          acts.append(b);
+        } else if (!m.disk) acts.append(el("span", "set-note", t("local.noDisk")));
+        if (m.installed && active !== m.id) acts.append(button("ghost small danger", t("local.remove", { size: gb(m.size) }), async () => {
+          if (!window.confirm(t("local.removeConfirm", { name: m.label }))) return;
+          await desktop.local.remove(m.id); info = await desktop.local.detect(); onChange(); draw();
+        }));
+        row.append(name, fit, acts);
+        box.append(row);
+      }
+      if (phase === "downloading" || phase === "starting") timer = setTimeout(draw, 1000);
+    };
+    draw();
   }
 
   // 常用的连接器：选一个就把它的接法填进输入框。都不需要密钥。

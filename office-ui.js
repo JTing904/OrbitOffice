@@ -63,8 +63,11 @@ const OfficeUI = (() => {
       btn("ghost", t("office.ai.office"), () => { editing = { kind: "office-ai" }; render(); }),
       btn("ghost", t("office.import"), importFiles),
       btn("ghost", t("office.openDir"), () => api().openDir()),
-      btn("ghost danger", t("office.reset"), resetTemplate),
     );
+    // 换成某个现成的模板（软件团队、内容团队）
+    const tpl = el("select", "set-select office-template");
+    for (const name of OfficeDef.TEMPLATES) tpl.append(new Option(t("office.tpl." + name), name));
+    tools.append(tpl, btn("ghost danger", t("office.useTemplate"), () => useTemplate(tpl.value)));
     box.append(tools);
     if (editing && editing.kind === "office-ai") box.append(officeAiPanel());
     if (busyText) box.append(el("p", "set-status", busyText));
@@ -431,13 +434,13 @@ const OfficeUI = (() => {
     UI.toast(t("office.refs.added", { n: files.length, name: agentName(agentById(id)) }), { kind: "ok", ttl: 4000 });
   }
 
-  async function resetTemplate() {
-    if (!window.confirm(t("office.resetConfirm"))) return;
+  async function useTemplate(name) {
+    if (!window.confirm(t("office.resetConfirm", { name: t("office.tpl." + name) }))) return;
     if (working()) return UI.toast(t("office.busy"), { kind: "warn", ttl: 9000 });
     cancelTasksOf(AGENTS.map(a => a.id));
     const r1 = await api().write({ remove: AGENTS.map(a => a.id) });
     if (!r1 || r1.ok === false) return fail(r1);
-    await saveStructural(OfficeDef.seed(LANG, {}));
+    await saveStructural(OfficeDef.fromTemplate(name, LANG));
   }
 
   return { build, render };

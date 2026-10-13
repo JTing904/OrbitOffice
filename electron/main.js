@@ -9,6 +9,15 @@ const { runAgent, discuss, compose, summarizeNotes, readFile, resolveInside, rea
 const mcp = require("./mcp");
 const office = require("./office");
 const memory = require("./memory");
+const localai = require("./localai");
+
+// 设置和数据放在哪：老用户继续用原来的 %APPDATA%/myaioffice（改了产品名也不丢设置、Key 和记录）；新用户用产品名命名的文件夹
+{
+  const legacy = path.join(app.getPath("appData"), "myaioffice");
+  const explicit = process.argv.some(x => x.startsWith("--user-data-dir"));   // 启动时指定了别的目录（例如测试）就听它的
+  if (!explicit && fs.existsSync(path.join(legacy, "config.json"))) app.setPath("userData", legacy);
+}
+const APP_ICON = path.join(__dirname, "..", "assets", "icon", "icon.png");
 
 const CONFIG_FILE = () => path.join(app.getPath("userData"), "config.json");
 let win = null;
@@ -31,7 +40,8 @@ function saveConfig() {
 function createWindow() {
   win = new BrowserWindow({
     width: 1440, height: 900, minWidth: 900, minHeight: 620,
-    frame: false, backgroundColor: "#05070f", show: false,
+    frame: false, backgroundColor: "#05070f", show: false, title: app.getName(),
+    icon: fs.existsSync(APP_ICON) ? APP_ICON : undefined,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true, nodeIntegration: false, sandbox: true,
@@ -79,6 +89,9 @@ ipcMain.on("window-control", (e, action) => {
   else if (action === "close") w.close();
   else if (action === "reload") w.webContents.reload();   // 改了办公室结构后重搭 3D 场景（页面自己的 location.reload 会被防跳转拦下）
 });
+
+// 产品名（package.json 的 productName），页面上显示的名字都用它
+ipcMain.on("app:name", e => { e.returnValue = app.getName(); });
 
 ipcMain.on("notify", (_e, title, body) => {
   if (Notification.isSupported()) new Notification({ title: String(title).slice(0, 120), body: String(body).slice(0, 300) }).show();
@@ -144,6 +157,7 @@ async function callSource(source, pathname, body, timeoutMs = 60000) {
     const headers = { Accept: "application/json" };
     if (key) headers.Authorization = "Bearer " + key;
     if (body) headers["Content-Type"] = "application/json";
+    if (body && source.local && body.tool_choice && typeof body.tool_choice === "object") body = Object.assign({}, body, { tool_choice: "required" });
     const res = await fetch(source.baseUrl.replace(/\/+$/, "") + pathname, {
       method: body ? "POST" : "GET", headers, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(timeoutMs),
     });
@@ -323,6 +337,62 @@ ipcMain.handle("conn:remove", (_e, id) => {
   saveConfig();
   return { ok: true };
 });
+
+// ---- 内置本地 AI（见 localai.js）：下载、启动，并作为一个来源加进 AI 池 ----
+// config.localAI = { model, enabled }：开 App 时自动启动上次用的模型
+const LOCAL_ID = "local-ai";
+let hwCache = null;
+const hardware = async () => (hwCache = hwCache || await localai.detect());
+function upsertLocalSource(modelId, name, enabled) {
+  const st = localai.status().running;
+  let s = findSource(LOCAL_ID);
+  if (!s) { s = { id: LOCAL_ID, name: name || "Local AI", tier: "strong" }; config.sources.push(s); }
+  Object.assign(s, { baseUrl: "http://127.0.0.1:" + localai.PORT + "/v1", model: modelId, enabled: !!enabled, local: true, ctx: st ? st.ctx : 16384 });
+  if (name) s.name = name;
+  altCache.delete(LOCAL_ID);
+  if (config.verified) delete config.verified[LOCAL_ID];   // 本地只有一个模型，不需要体检出来的备用列表
+  saveConfig();
+}
+ipcMain.handle("local:detect", async () => {
+  try {
+    const hw = await hardware();
+    const list = localai.assess(hw);
+    return { ok: true, hw, list, recommended: localai.recommend(list), status: localai.status(), config: config.localAI || null };
+  } catch (e) { return { ok: false, error: String(e.message || e) }; }
+});
+ipcMain.handle("local:status", () => Object.assign(localai.status(), { config: config.localAI || null }));
+// 下载（如果还没有）并启动；完成前一直等着，进度用 local:status 查
+ipcMain.handle("local:enable", async (_e, modelId, name) => {
+  try {
+    const hw = await hardware();
+    await localai.install(modelId, hw);
+    await localai.start(modelId, hw);
+    config.localAI = { model: modelId, enabled: true };
+    upsertLocalSource(modelId, name, true);
+    return { ok: true, status: localai.status() };
+  } catch (e) { return { ok: false, error: String(e.message || e), status: localai.status() }; }
+});
+ipcMain.handle("local:disable", () => {
+  localai.stop();
+  if (config.localAI) config.localAI.enabled = false;
+  const s = findSource(LOCAL_ID);
+  if (s) { s.enabled = false; saveConfig(); }
+  return localai.status();
+});
+ipcMain.handle("local:cancel", () => { localai.cancel(); return true; });
+ipcMain.handle("local:remove", (_e, modelId) => {
+  try {
+    if (config.localAI && config.localAI.model === modelId) { config.localAI.enabled = false; const s = findSource(LOCAL_ID); if (s) s.enabled = false; saveConfig(); }
+    localai.remove(modelId);
+    return { ok: true };
+  } catch (e) { return { ok: false, error: String(e.message || e) }; }
+});
+async function autoStartLocal() {
+  const c = config.localAI;
+  if (!c || !c.enabled) return;
+  try { const hw = await hardware(); await localai.start(c.model, hw); upsertLocalSource(c.model, null, true); }
+  catch (_) { const s = findSource(LOCAL_ID); if (s) { s.enabled = false; saveConfig(); } }   // 起不来就先停用，设置里会显示原因
+}
 
 // ---- 办公室和员工：存成文件（见 office.js），用户可以增删改 ----
 const userDir = () => app.getPath("userData");
@@ -543,7 +613,7 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on("second-instance", () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
-  app.whenReady().then(() => { loadConfig(); createWindow(); config.connectors.forEach(startConn); });
+  app.whenReady().then(() => { loadConfig(); localai.init(app.getPath("userData")); createWindow(); config.connectors.forEach(startConn); autoStartLocal(); });
   app.on("window-all-closed", () => app.quit());
-  app.on("will-quit", () => mcp.stopAll());   // 连接器启动的程序跟着 App 一起关
+  app.on("will-quit", () => { mcp.stopAll(); localai.stop(); });   // 连接器和本地 AI 启动的程序跟着 App 一起关
 }

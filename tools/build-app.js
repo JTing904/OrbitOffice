@@ -6,7 +6,8 @@ const path = require("path");
 
 const root = path.join(__dirname, "..");
 const runtime = path.join(root, "node_modules", "electron", "dist");
-const out = path.join(root, "dist", "MyAIOffice");
+const NAME = require(path.join(root, "package.json")).productName || "MyAIOffice";
+const out = path.join(root, "dist", NAME);
 const appDir = path.join(out, "resources", "app");
 
 if (!fs.existsSync(path.join(runtime, "electron.exe"))) {
@@ -16,7 +17,7 @@ if (!fs.existsSync(path.join(runtime, "electron.exe"))) {
 
 fs.rmSync(out, { recursive: true, force: true });
 fs.cpSync(runtime, out, { recursive: true });
-fs.renameSync(path.join(out, "electron.exe"), path.join(out, "MyAIOffice.exe"));
+fs.renameSync(path.join(out, "electron.exe"), path.join(out, NAME + ".exe"));
 fs.rmSync(path.join(out, "resources", "default_app.asar"), { force: true });
 
 // App 本体：页面、脚本、本地库、模型、桌面外壳
@@ -28,6 +29,8 @@ fs.cpSync(path.join(root, "vendor"), path.join(appDir, "vendor"), { recursive: t
 fs.cpSync(path.join(root, "electron"), path.join(appDir, "electron"), { recursive: true });
 fs.mkdirSync(path.join(appDir, "assets"), { recursive: true });
 fs.copyFileSync(path.join(root, "assets", "models.js"), path.join(appDir, "assets", "models.js"));
+fs.mkdirSync(path.join(appDir, "assets", "icon"), { recursive: true });
+fs.copyFileSync(path.join(root, "assets", "icon", "icon.png"), path.join(appDir, "assets", "icon", "icon.png"));
 
 const size = dir => fs.readdirSync(dir, { withFileTypes: true }).reduce((n, e) => n + (e.isDirectory() ? size(path.join(dir, e.name)) : fs.statSync(path.join(dir, e.name)).size), 0);
-console.log("built", path.join(out, "MyAIOffice.exe"), "—", (size(out) / 1048576).toFixed(0) + " MB");
+console.log("built", path.join(out, NAME + ".exe"), "—", (size(out) / 1048576).toFixed(0) + " MB");

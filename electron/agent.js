@@ -185,6 +185,7 @@ function systemPrompt(req, notes, ext) {
   const lang = req.lang === "zh" ? "Simplified Chinese" : "English";
   return [
     `You are ${req.agentName}, the ${req.agentRole} on a small team. You do real work: you read and change real files in the user's working folder using the tools provided.`,
+    "Today is " + today() + ".",
     req.purpose ? "What this team does (written by the user): " + req.purpose : "",
     req.brief ? "Your job on this team (written by the user — follow it):\n" + req.brief : "",
     (req.skills || []).length ? "Your skills: " + req.skills.join(", ") + "." : "",
@@ -253,9 +254,9 @@ async function decideHandoff(req, deps, src, messages, summary) {
 }
 
 // 对话太长时，把较早的工具输出压缩掉，只留开头，免得超出模型的上下文
-function trimContext(messages) {
+function trimContext(messages, limit = MAX_CONTEXT) {
   let total = messages.reduce((n, m) => n + String(m.content || "").length, 0);
-  for (let i = 2; i < messages.length - 6 && total > MAX_CONTEXT; i++) {
+  for (let i = 2; i < messages.length - 6 && total > limit; i++) {
     const m = messages[i];
     if (m.role === "tool" && m.content.length > 600) {
       total -= m.content.length - 600;
@@ -277,6 +278,9 @@ function strength(model) {
   if (/customtools/.test(m)) score -= 100;
   return score;
 }
+
+// 今天的日期（本地时间），写进每个提示词：模型自己不知道今天是哪天，文件名、季节、排期都会写错
+const today = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0") + " (" + d.toLocaleDateString("en-US", { weekday: "long" }) + ")"; };
 
 // 聊天里这句话是在提问（而不是让员工动手改东西）
 const QUESTION = /[?？]|怎么|什么|为什么|哪|吗\s*$|\b(how|what|why|where|which|who|can you explain)\b/i;
@@ -364,7 +368,9 @@ async function runAgent(req, deps) {
     let reply = null;
     while (sourceIndex < pool.length) {
       const src = pool[sourceIndex];
-      const body = { model: src.model, messages, tools, tool_choice: "auto", temperature: 0.2, max_tokens: 8192 };
+      // 本地模型的上下文短（src.ctx 个 token）：按大约 1.6 字一个 token 压缩较早的输出，回复长度也相应限制
+      if (src.ctx) trimContext(messages, src.ctx * 1.6);
+      const body = { model: src.model, messages, tools, tool_choice: "auto", temperature: 0.2, max_tokens: src.ctx ? Math.min(8192, Math.floor(src.ctx / 4)) : 8192 };
       let r = await deps.call(src, "/chat/completions", body);
       if (!r.ok && transient(r)) { await sleep(2500); r = await deps.call(src, "/chat/completions", body); }
       if (r.ok && r.data && r.data.choices && r.data.choices[0]) { reply = r.data.choices[0].message; break; }
@@ -518,13 +524,14 @@ async function discuss(req, deps) {
     "Important fact about this team: it works only by reading and writing text files in a working folder" + (req.commands ? " and running command-line tools" : "") +
     ". Nobody can operate graphical apps (game editors such as Unity or Godot, design tools, office suites, social media sites). Only suggest work this team can actually produce that way — for software, technologies that run from plain files, such as a browser app in HTML/CSS/JavaScript.";
   const isSoftware = /(^|; )designer: /.test(req.team || "") && /(^|; )developer: /.test(req.team || "");
+  const dateLine = " Today is " + today() + ".";
   const system = plan
     ? "You are " + req.agentName + ", the " + req.agentRole + ". The team just discussed the user's topic in a group chat. Wrap it up: give the conclusion and the concrete next tasks, using the propose_plan tool. " +
-      CAN_DO + " Only include tasks that are really needed and that this team can actually do. Keep the first version small enough to build right away. Order the tasks in the sequence they must happen" + (isSoftware ? " (plan, design, code, test, review)" : "") + ". " + (isSoftware ? "The designer is only needed when the product has a user interface people look at (screens, web pages, app windows, game visuals). For a command-line tool, script, API, library, background service, data processing or a document, skip the designer and go straight to the developer. " : "") + "Teammates (id: name, role): " + req.team + ". Write in " + lang + "."
+      CAN_DO + " Only include tasks that are really needed and that this team can actually do. Keep the first version small enough to build right away. Order the tasks in the sequence they must happen" + (isSoftware ? " (plan, design, code, test, review)" : "") + ". " + (isSoftware ? "The designer is only needed when the product has a user interface people look at (screens, web pages, app windows, game visuals). For a command-line tool, script, API, library, background service, data processing or a document, skip the designer and go straight to the developer. " : "") + "Teammates (id: name, role): " + req.team + "." + dateLine + " Write in " + lang + "."
     : "You are " + req.agentName + ", the " + req.agentRole + ", in your team's group chat. " + (req.brief ? "Your job: " + req.brief + " " : "") +
       CAN_DO + " The user raised a topic and the team is discussing it. Say what matters from YOUR role's point of view: a concrete suggestion, a risk, or a question that must be settled. " +
       "React to what teammates already said — agree, disagree or build on it, and you may address someone as @name. Do not repeat points already made. " +
-      "Be specific to this topic, not generic. 1 to 3 short sentences, plain chat tone, no lists, no headings. Write in " + lang + ".";
+      "Be specific to this topic, not generic. 1 to 3 short sentences, plain chat tone, no lists, no headings." + dateLine + " Write in " + lang + ".";
   const body = {
     messages: [{ role: "system", content: system }, { role: "user", content: "Topic from the user: " + req.topic + "\n\nConversation so far:\n" + (req.transcript || "(nobody has spoken yet)") + (plan ? "" : "\n\nYour turn, " + req.agentName + ":") }],
     temperature: plan ? 0.2 : 0.7, max_tokens: plan ? 2000 : 900,
@@ -590,11 +597,12 @@ async function compose(req, deps) {
   const facts = "Facts about how these AI teammates work: each one is an AI model that can only read and write text files (Markdown, code, data) in the user's working folder, ask the user questions, " +
     "hand work to a teammate, and — only if the user allows it — run command-line tools or use connectors the user added (for example reading web pages). They cannot click through apps or websites, post to social media, send email, or make images or video. " +
     "So every deliverable must be a text file, for example drafts/2026-10-post.md. Write the instructions so the teammate produces real, finished, usable work, not advice about the work.";
+  const dateNote = " Today is " + today() + ".";
   const system = (office
     ? "You design AI offices. The user describes what they want; you define the office with the define_office tool: a clear purpose, 2-4 teams, 2-4 teammates per team, each with a distinct job. Make the first teammate of the first team the coordinator who plans work and splits it among the others. "
     : "You write job descriptions for AI teammates. The user describes the teammate they want; you define it with the define_agent tool. ") +
     facts + (req.purpose ? " What the user's office does: " + req.purpose : "") + (req.team ? " Existing teammates (id: name, role): " + req.team + "." : "") +
-    " Write every name, role, skill and instruction in " + lang + ".";
+    dateNote + " Write every name, role, skill and instruction in " + lang + ".";
   const tool = office ? OFFICE_TOOL : AGENT_TOOL;
   const body = {
     messages: [{ role: "system", content: system }, { role: "user", content: String(req.text || "").slice(0, 2000) }],

@@ -14,12 +14,13 @@ It ships with a ready-made software team, but the team is just a set of Markdown
 - **Group discussion.** Raise a topic in the group chat; several agents discuss it from their own roles, then the lead sums up and proposes tasks you can start in order with one click.
 - **Project memory.** Every finished piece of work is recorded in the project folder. Before a new task, agents look up related earlier work and read the team's shared notes, which are summarized automatically when they grow long.
 - **Free AI pool.** Add API keys from several providers (Google Gemini, NVIDIA NIM, Groq, OpenRouter, a local Ollama, or any OpenAI-compatible endpoint). AgentHive tests every model, uses the strongest for real work and lighter ones for chat, and switches automatically when a quota runs out.
+- **Built-in local AI.** No key and no internet needed: AgentHive checks your GPU, RAM and disk, recommends an open model (Qwen3.5, 2B to 35B) that runs well on your machine, and downloads and runs it in one click. No Ollama required.
 - **You stay in control.** Three permission modes (Manual, Auto, Full access), per-role write limits, a block list for dangerous commands, and approval prompts before anything risky. Keys are stored encrypted on your computer and never shown in full.
 
 ## Getting started
 
 1. Download the latest release for Windows and run the installer.
-2. Open **Settings → AI pool**, pick a provider and paste its API key. Free keys work:
+2. Open **Settings → AI pool**. Either enable **Local AI** (one click, runs on your computer), or pick a provider and paste its API key. Free keys work:
    - Google Gemini — <https://aistudio.google.com/apikey>
    - NVIDIA NIM — <https://build.nvidia.com>
    - Groq — <https://console.groq.com/keys>
@@ -74,7 +75,8 @@ Requires Node.js 18+ and Windows (the app itself is Electron, so macOS and Linux
 ```bash
 npm install
 npm start                  # run in development
-node tools/build-app.js    # build dist/AgentHive/ with the .exe
+npm run dist              # build the installer in dist/installer/
+npm run portable          # or a portable folder in dist/<name>/
 ```
 
 3D models are generated with Blender from `tools/blender/build_models.py`, then packed with `node tools/pack-models.js`.
@@ -84,6 +86,8 @@ node tools/build-app.js    # build dist/AgentHive/ with the .exe
 - The quality of the work depends on the models you connect. Free models are capable but not top-tier; long multi-agent chains are where they slip most.
 - Agents work through text files, commands and connectors only. They cannot click through apps or websites, post to social media or create images.
 - Connectors that need an OAuth login are not supported yet.
+- The installer is not code-signed yet, so Windows SmartScreen shows a warning the first time (More info → Run anyway).
+- Local AI is much weaker than the big cloud models; small local models in particular struggle with long multi-step tasks.
 - The command guard for the security tester blocks obvious network access, but it is a guardrail, not a sandbox. Keep Manual or Auto mode when running untrusted agents.
 
 ## License
