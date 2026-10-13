@@ -8,7 +8,7 @@
 const AGENTS = [
   {
     id: "planner", team: "product",
-    brief: "Turn the request into a concrete plan and write it to docs/plan.md: goals, scope, the chosen technology, and a task breakdown where every owner is one of your actual teammates. Keep the first version small enough for this team to build right away. Do not write calendar schedules in weeks or person-days.", color: "#4c9a6a",
+    brief: "Turn the request into a concrete plan and write it to docs/plan.md: goals, scope, the chosen technology, and a task breakdown where every owner is one of your actual teammates. Keep the first version small enough for this team to build right away. Do not write calendar schedules in weeks or person-days. When the work needs building, hand off to the designer only if the product has a user interface people look at (screens, pages, app windows, game visuals); for a command-line tool, script, API, library or data processing, hand off straight to the developer.", color: "#4c9a6a",
     keywords: ["需求", "拆解", "拆分", "方案", "架构", "排期", "估时", "计划", "里程碑", "迭代",
       "requirement", "breakdown", "break down", "plan", "estimate", "estimation", "roadmap", "milestone", "sprint", "ticket", "architecture"],
     zh: {
@@ -104,7 +104,7 @@ const AGENTS = [
   },
   {
     id: "designer", team: "product", color: "#f97373",
-    brief: "Design the user interface and experience. Always deliver a mockup the user can open in a browser: a self-contained static HTML file (with its CSS) under design/, showing the real screens and states with realistic sample content. Also write docs/design.md covering the screens, layout, components, states and user flows, and say in your summary which file to open.",
+    brief: "Design the user interface and experience. Always deliver a mockup the user can open in a browser: a self-contained static HTML file (with its CSS) under design/, showing the real screens and states with realistic sample content. Also write docs/design.md covering the screens, layout, components, states and user flows, and say in your summary which file to open. If the work has no user interface (a command-line tool, script, API, library or data processing), do not invent screens: finish with status 'blocked', say why, and hand off to the developer.",
     keywords: ["界面", "交互", "原型", "配色", "布局", "视觉", "样式", "设计稿",
       "ui", "ux", "mockup", "wireframe", "layout", "design", "prototype", "style"],
     zh: {
@@ -539,10 +539,23 @@ function retestAfterFix(task, a) {
   return rounds >= 2 ? null : { to: "attacker", task: t("route.retest") };
 }
 
+// 没有界面的项目不需要设计：要交给设计师、但用户最初的要求明显是命令行/接口/脚本之类、又没提到任何界面时，直接改交给开发者
+const UI_WORDS = /界面|页面|网页|网站|前端|按钮|屏幕|窗口|游戏|画面|小程序|\b(ui|ux|web\s?(site|page|app)|website|frontend|front-end|page|screen|window|button|game|gui|html|css|mobile app|desktop app)\b/i;
+const NO_UI_WORDS = /命令行|终端|脚本|接口|后端|服务端|爬虫|数据处理|批处理|函数库|工具库|类库|\b(cli|command[- ]line|terminal|script|api|backend|back-end|library|sdk|daemon|cron|batch|parser|crawler|scraper)\b/i;
+function skipsDesign(cur, h) {
+  if (h.to !== "designer") return false;
+  let root = cur;
+  for (let i = 0; i < 12 && root.parent; i++) { const p = tasks.find(x => x.id === root.parent); if (!p) break; root = p; }
+  // 只看用户最初的要求：交接任务是 AI 自己写的，常会顺手写上「设计界面」
+  const text = taskTitle(root);
+  return NO_UI_WORDS.test(text) && !UI_WORDS.test(text);
+}
+
 function proposeHandoff(cur, a, h) {
   if (!h || !agentById(h.to) || h.to === a.id) return;
   // 有固定下一站的岗位（攻击者的报告必须先经安全员核实）：不管它想交给谁，都改交给那一位
   if (a.handsTo && h.to !== a.handsTo) h = { to: a.handsTo, task: t("route." + a.id) };
+  if (skipsDesign(cur, h)) h = { to: "developer", task: h.task };
   const next = createTask(h.task, h.to, { handoff: true, from: a.id, parent: cur.id, topic: cur.topic });
   next.depth = (cur.depth || 0) + 1;
   next.context = (agentName(a) + " (" + agentRole(a) + "): " + (cur.result || "")).slice(0, 3000);

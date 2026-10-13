@@ -235,6 +235,7 @@ async function decideHandoff(req, deps, src, messages, summary) {
     "You finished with this summary:\n" + summary + "\n\nNow decide one thing and answer with the handoff_decision tool. Is further work by a teammate REQUIRED right now because of your result? " +
     "Answer needed=true if (a) you found defects that someone must fix — send them back to the teammate who wrote the work, or (b) the user's original request asked to build/make/fix something and your part alone does not deliver it, or (c) your own job description says you must hand off in this situation. " +
     (req.brief ? "Your job description: " + req.brief + " " : "") +
+    "The designer is only needed when the product has a user interface people look at (screens, web pages, app windows, game visuals). For a command-line tool, script, API, library, background service, data processing or a document, skip the designer and go straight to the developer. " +
     "Answer needed=false if the user asked only for your kind of output (only a plan, only a document, only a review with nothing that must be fixed), or the request is fully satisfied. Do not hand off just to keep a pipeline going. " +
     "Teammates (id: role): " + req.team }]);
   const r = await deps.call(src, "/chat/completions", { model: src.model, messages: ask, tools: [DECIDE_TOOL], tool_choice: { type: "function", function: { name: "handoff_decision" } }, temperature: 0, max_tokens: 400 });
@@ -505,7 +506,7 @@ async function discuss(req, deps) {
     ". Nobody can use graphical editors such as Unity, Godot's editor, Unreal or Blender's interface. So only suggest technologies that work from plain files, for example a browser game in HTML/CSS/JavaScript.";
   const system = plan
     ? "You are " + req.agentName + ", the " + req.agentRole + ". The team just discussed the user's topic in a group chat. Wrap it up: give the conclusion and the concrete next tasks, using the propose_plan tool. " +
-      CAN_DO + " Only include tasks that are really needed and that this team can actually do. Keep the first version small enough to build right away. Order the tasks in the sequence they must happen (plan, design, code, test, review). Teammates (id: role): " + req.team + ". Write in " + lang + "."
+      CAN_DO + " Only include tasks that are really needed and that this team can actually do. Keep the first version small enough to build right away. Order the tasks in the sequence they must happen (plan, design, code, test, review). The designer is only needed when the product has a user interface people look at (screens, web pages, app windows, game visuals). For a command-line tool, script, API, library, background service, data processing or a document, skip the designer and go straight to the developer. Teammates (id: role): " + req.team + ". Write in " + lang + "."
     : "You are " + req.agentName + ", the " + req.agentRole + ", in your team's group chat. " + (req.brief ? "Your job: " + req.brief + " " : "") +
       CAN_DO + " The user raised a topic and the team is discussing it. Say what matters from YOUR role's point of view: a concrete suggestion, a risk, or a question that must be settled. " +
       "React to what teammates already said — agree, disagree or build on it, and you may address someone as @name. Do not repeat points already made. " +
