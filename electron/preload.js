@@ -13,6 +13,14 @@ contextBridge.exposeInMainWorld("desktop", {
     get: () => ipcRenderer.invoke("caps:get"),
     set: caps => ipcRenderer.invoke("caps:set", caps),
   },
+  // 连接器：接上外部工具。配置里的密钥只能写入，读不回来。
+  connectors: {
+    list: () => ipcRenderer.invoke("conn:list"),
+    add: text => ipcRenderer.invoke("conn:add", text),
+    update: (id, patch) => ipcRenderer.invoke("conn:update", id, patch),
+    reconnect: id => ipcRenderer.invoke("conn:reconnect", id),
+    remove: id => ipcRenderer.invoke("conn:remove", id),
+  },
   files: {
     read: rel => ipcRenderer.invoke("files:read", rel),
     reveal: rel => ipcRenderer.invoke("files:reveal", rel),

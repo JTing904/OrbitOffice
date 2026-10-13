@@ -6,16 +6,18 @@ const { app, BrowserWindow, ipcMain, dialog, Notification, shell, safeStorage } 
 const path = require("path");
 const fs = require("fs");
 const { runAgent, discuss, readFile, resolveInside, readNotes, strength } = require("./agent");
+const mcp = require("./mcp");
 
 const CONFIG_FILE = () => path.join(app.getPath("userData"), "config.json");
 let win = null;
-let config = { projectDir: null, sources: [], caps: { commands: false } };
+let config = { projectDir: null, sources: [], caps: { commands: false }, connectors: [] };
 let savedProjectDir;   // 开发时用环境变量临时换了项目文件夹的话，这里记着真正该保存的值
 
 function loadConfig() {
   try { Object.assign(config, JSON.parse(fs.readFileSync(CONFIG_FILE(), "utf8"))); } catch (_) { /* 首次启动没有配置 */ }
   if (config.projectDir && !fs.existsSync(config.projectDir)) config.projectDir = null;
   if (!Array.isArray(config.sources)) config.sources = [];
+  if (!Array.isArray(config.connectors)) config.connectors = [];
   if (!config.caps || typeof config.caps !== "object") config.caps = { commands: false };
   if (process.env.MYAIOFFICE_PROJECT) { savedProjectDir = config.projectDir; config.projectDir = process.env.MYAIOFFICE_PROJECT; }   // 开发用：临时指定项目文件夹（不保存）
 }
@@ -208,6 +210,67 @@ const currentCaps = () => ({ commands: !!config.caps.commands, blender: config.c
 ipcMain.handle("caps:get", () => ({ commands: !!config.caps.commands, blenderFound: !!findBlender() }));
 ipcMain.handle("caps:set", (_e, caps) => { config.caps.commands = !!(caps && caps.commands); saveConfig(); return { commands: config.caps.commands, blenderFound: !!findBlender() }; });
 
+// ---- 连接器（MCP）：接上外部工具给员工用 ----
+// connector: { id, name, type: "stdio" | "http", command, url, enabled, trusted, secrets: [名字] }
+// 配置里带的密钥（环境变量、请求头）和 API Key 一样加密单独存，页面只看得到名字。
+function connSecret(id) {
+  const enc = readKeys()["conn:" + id];
+  if (!enc) return {};
+  try { return JSON.parse(safeStorage.decryptString(Buffer.from(enc, "base64"))); } catch (_) { return {}; }
+}
+function setConnSecret(id, secret) {
+  const keys = readKeys();
+  const has = secret && (Object.keys(secret.env || {}).length || Object.keys(secret.headers || {}).length);
+  if (!has) delete keys["conn:" + id];
+  else {
+    if (!safeStorage.isEncryptionAvailable()) return false;
+    keys["conn:" + id] = safeStorage.encryptString(JSON.stringify(secret)).toString("base64");
+  }
+  try { fs.writeFileSync(KEYS_FILE(), JSON.stringify(keys)); return true; } catch (_) { return false; }
+}
+const findConn = id => config.connectors.find(c => c.id === id);
+const publicConn = c => Object.assign({}, c, mcp.status(c.id));
+const startConn = c => { if (c.enabled) mcp.connect(c, connSecret(c.id)); else mcp.stop(c.id); };
+
+ipcMain.handle("conn:list", () => config.connectors.map(publicConn));
+ipcMain.handle("conn:add", (_e, text) => {
+  let found;
+  try { found = mcp.parseInput(String(text || "").slice(0, 8000)); } catch (e) { return { ok: false, error: e.message }; }
+  if (!found.length) return { ok: false, error: "bad-input" };
+  if (config.connectors.length + found.length > 12) return { ok: false, error: "too-many" };
+  for (const f of found) {
+    const c = {
+      id: "conn-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      name: String(f.name || "Connector").slice(0, 40), type: f.type, command: f.command, url: f.url, enabled: true, trusted: false,
+      secrets: Object.keys(f.secret.env || {}).concat(Object.keys(f.secret.headers || {})),
+    };
+    if (c.secrets.length && !setConnSecret(c.id, f.secret)) return { ok: false, error: "encryption-unavailable" };
+    config.connectors.push(c);
+    startConn(c);
+  }
+  saveConfig();
+  return { ok: true, added: found.length };
+});
+ipcMain.handle("conn:update", (_e, id, patch) => {
+  const c = findConn(id);
+  if (!c) return { ok: false };
+  patch = patch || {};
+  if (typeof patch.name === "string" && patch.name.trim()) c.name = patch.name.trim().slice(0, 40);
+  if (typeof patch.trusted === "boolean") { c.trusted = patch.trusted; mcp.setTrusted(id, c.trusted); }
+  if (typeof patch.enabled === "boolean" && patch.enabled !== c.enabled) { c.enabled = patch.enabled; startConn(c); }
+  else if (typeof patch.name === "string" && c.enabled) startConn(c);   // 工具名的前缀跟着名字走
+  saveConfig();
+  return { ok: true };
+});
+ipcMain.handle("conn:reconnect", (_e, id) => { const c = findConn(id); if (c && c.enabled) startConn(c); return !!c; });
+ipcMain.handle("conn:remove", (_e, id) => {
+  mcp.stop(id);
+  config.connectors = config.connectors.filter(c => c.id !== id);
+  setConnSecret(id, null);
+  saveConfig();
+  return { ok: true };
+});
+
 // 查看项目文件夹里的文件（任务详情页用）
 ipcMain.handle("files:read", (_e, rel) => {
   if (!config.projectDir) return { ok: false, error: "no-project" };
@@ -308,6 +371,8 @@ ipcMain.handle("agent:run", async (e, req) => {
       sources: () => config.sources || [],
       alts: altModels,
       cancelled: () => cancelledRuns.has(req.taskId),
+      connectorTools: () => mcp.agentTools(),
+      callTool: mcp.callTool,
       call: (source, pathname, body) => callSource(source, pathname, body, 90000),
       // 用不了的型号记在设置里，重启 App 后仍然有效
       coolUntil: key => (config.cool && config.cool[key]) || 0,
@@ -364,6 +429,7 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on("second-instance", () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
-  app.whenReady().then(() => { loadConfig(); createWindow(); });
+  app.whenReady().then(() => { loadConfig(); createWindow(); config.connectors.forEach(startConn); });
   app.on("window-all-closed", () => app.quit());
+  app.on("will-quit", () => mcp.stopAll());   // 连接器启动的程序跟着 App 一起关
 }

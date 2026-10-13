@@ -573,3 +573,9 @@ select option { background: #12172b; color: var(--ink); }
 .talk-status .stop { padding: 1px 10px; border-radius: 999px; border: 1px solid var(--line-strong); background: transparent; color: var(--ink); font-size: 11px; }
 .plan-item .added { flex: none; font: 600 10px var(--mono); letter-spacing: .08em; color: var(--ok); }
 .td-actions { display: flex; gap: 8px; margin-top: 8px; }
+
+/* 设置：连接器 */
+.conn-target { display: block; padding: 6px 10px; border-radius: 8px; background: rgba(255, 255, 255, .04); }
+.conn-tools { font: 500 11.5px/1.7 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.conn-add .set-select { flex: 0 1 190px; }
+.conn-add .set-input { max-width: none; }

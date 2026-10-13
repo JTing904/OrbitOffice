@@ -299,7 +299,7 @@ const UI = (() => {
 
   function traceLine(ev) {
     if (ev.type === "ask" && ev.kind === "question") return t(ev.answer ? "td.ev.ask.q" : "td.ev.ask.q.none", ev);
-    if (ev.type === "ask") return t((ev.kind === "command" ? "td.ev.ask.cmd." : "td.ev.ask.") + (ev.allow ? "yes" : "no"), ev);
+    if (ev.type === "ask") return t((ev.kind === "command" ? "td.ev.ask.cmd." : ev.kind === "tool" ? "td.ev.ask.tool." : "td.ev.ask.") + (ev.allow ? "yes" : "no"), ev);
     return t("td.ev." + ev.type, ev);
   }
 
@@ -469,6 +469,11 @@ const UI = (() => {
       caps.append(row(t("set.caps.commands"), sw), el("p", "set-note", t("set.caps.note")), blender);
     } else caps.append(el("p", "set-note", t("set.project.web")));
 
+    // 连接器：接上外部工具
+    const conn = section("set.conn");
+    if (d && d.connectors) buildConnSettings(conn, d.connectors);
+    else conn.append(el("p", "set-note", t("set.project.web")));
+
     // AI 池：NVIDIA NIM
     const ai = section("set.ai");
     if (d && d.pool) buildAiSettings(ai, d.pool);
@@ -486,7 +491,7 @@ const UI = (() => {
     const kbd = (k, label) => row(label, el("kbd", null, k));
     keys.append(kbd("Ctrl J", t("set.sc.chat")), kbd("Ctrl K", t("set.sc.palette")), kbd("Esc", t("set.sc.close")), kbd("F11", t("set.sc.full")));
 
-    v.append(general, project, caps, ai, agents, data, keys);
+    v.append(general, project, caps, conn, ai, agents, data, keys);
   }
 
   const AI_PRESETS = [
@@ -652,6 +657,97 @@ const UI = (() => {
       render();
     }));
     box.append(el("p", "set-note", t("set.ai.note")), list, addRow);
+    render();
+  }
+
+  // 常用的连接器：选一个就把它的接法填进输入框。都不需要密钥。
+  const CONN_PRESETS = [
+    { key: "set.conn.p.pick", text: "" },
+    { key: "set.conn.p.fetch", text: "uvx mcp-server-fetch" },
+    { key: "set.conn.p.docs", text: "https://mcp.context7.com/mcp" },
+    { key: "set.conn.p.browser", text: "npx -y @playwright/mcp@latest" },
+    { key: "set.conn.p.blender", text: "uvx blender-mcp" },
+  ];
+
+  function buildConnSettings(box, api) {
+    const list = el("div", "src-list");
+    const status = el("p", "set-status");
+    let timer = null, drawn = false;
+    const errText = e => {
+      if (/not recognized|not found|ENOENT/i.test(e)) return t("set.conn.e.missing");
+      return I18N[LANG]["set.conn.e." + e] ? t("set.conn.e." + e) : e;
+    };
+
+    function card(c) {
+      const node = el("div", "src" + (c.enabled ? "" : " off"));
+      const head = el("div", "src-head");
+      const name = el("input", "set-input src-name");
+      name.type = "text"; name.value = c.name; name.spellcheck = false;
+      name.addEventListener("change", async () => { if (name.value.trim()) { await api.update(c.id, { name: name.value.trim() }); render(); } });
+      const sw = (checked, labelKey, onChange) => {
+        const l = el("label", "switch");
+        const i = el("input");
+        i.type = "checkbox"; i.checked = checked;
+        i.addEventListener("change", () => onChange(i.checked));
+        l.append(i, el("span", "track"), el("em", null, t(labelKey)));
+        return l;
+      };
+      head.append(name, sw(c.enabled, "set.ai.enabled", async on => { await api.update(c.id, { enabled: on }); render(); }),
+        button("ghost small danger", t("set.ai.remove"), async () => { if (window.confirm(t("set.conn.removeConfirm"))) { await api.remove(c.id); render(); } }));
+
+      const target = el("code", "set-path conn-target", c.type === "http" ? c.url : c.command);
+      target.title = target.textContent;
+      const st = el("p", "set-status" + (c.status === "error" ? " bad" : ""));
+      st.textContent = !c.enabled ? t("set.conn.s.off")
+        : c.status === "ready" ? t("set.conn.s.ready", { n: c.tools.length })
+        : c.status === "error" ? t("set.conn.s.error", { error: errText(c.error) })
+        : t("set.conn.s.connecting");
+      node.append(head, target, st);
+      if ((c.secrets || []).length) node.append(el("p", "set-status", t("set.conn.secrets", { names: c.secrets.join(", ") })));
+
+      if (c.enabled) {
+        const acts = el("div", "set-inline");
+        acts.append(sw(c.trusted, "set.conn.trust", on => api.update(c.id, { trusted: on })), button("ghost small", t("set.conn.reconnect"), async () => { await api.reconnect(c.id); render(); }));
+        node.append(acts);
+      }
+      if (c.tools.length) {
+        const more = el("details", "src-adv");
+        more.append(el("summary", null, t("set.conn.tools", { n: c.tools.length })), el("div", "conn-tools", c.tools.join("  ·  ")));
+        node.append(more);
+      }
+      return node;
+    }
+
+    async function render() {
+      clearTimeout(timer);
+      const items = await api.list();
+      if (drawn && !list.isConnected) return;   // 设置页已经重建了，这份不用再刷新
+      drawn = true;
+      // 正在输入名字时不重画，免得打断
+      if (!(document.activeElement && list.contains(document.activeElement) && document.activeElement.type === "text")) {
+        list.replaceChildren(...items.map(card));
+        if (!items.length) list.append(el("p", "set-note", t("set.conn.empty")));
+      }
+      if (items.some(c => c.enabled && c.status === "connecting")) timer = setTimeout(render, 1500);
+    }
+
+    const preset = el("select", "set-select");
+    for (const p of CONN_PRESETS) preset.append(new Option(t(p.key), p.text));
+    const input = el("input", "set-input wide mono");
+    input.type = "text"; input.spellcheck = false; input.autocomplete = "off"; input.placeholder = t("set.conn.ph");
+    preset.addEventListener("change", () => { input.value = preset.value; status.textContent = preset.value === "uvx blender-mcp" ? t("set.conn.blenderNote") : ""; status.classList.remove("bad"); });
+    const add = async () => {
+      if (!input.value.trim()) return;
+      const r = await api.add(input.value);
+      status.classList.toggle("bad", !r.ok);
+      status.textContent = r.ok ? t("set.conn.added") : t("set.conn.s.error", { error: errText(r.error) });
+      if (r.ok) { input.value = ""; preset.value = ""; }
+      render();
+    };
+    input.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); add(); } });
+    const addRow = el("div", "set-inline src-add conn-add");
+    addRow.append(preset, input, button("primary", t("set.conn.add"), add));
+    box.append(el("p", "set-note", t("set.conn.note")), list, addRow, status);
     render();
   }
 

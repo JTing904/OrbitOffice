@@ -449,7 +449,7 @@ function onAgentEvent(ev) {
   const trace = task.trace || (task.trace = []);
   if (trace.length < 160) trace.push({ at: Date.now(), type: ev.type, kind: ev.kind, path: ev.path, text: ev.text, step: ev.step, source: ev.source, from: ev.from, error: ev.error });
   if (ev.type === "thinking") { task.stepText = t("real.thinking", ev); task.progress = Math.min(0.92, ev.step / ev.max); }
-  else if (["list", "read", "write", "edit", "search", "run"].includes(ev.type)) task.stepText = t("real." + ev.type, { path: ev.path });
+  else if (["list", "read", "write", "edit", "search", "run", "tool"].includes(ev.type)) task.stepText = t("real." + ev.type, { path: ev.path });
   else if (ev.type === "switch") addLog("log.realFailed", { a: a.id, task: snap(task), error: t("real.switch", { from: ev.from }) + " " + (ev.error || "") });
   else if (ev.type === "ask") {
     // 员工提问或请求批准：用 App 内的弹窗，任务会一直等到你回应
@@ -465,7 +465,7 @@ function onAgentEvent(ev) {
         desktop.agent.answer(ev.askId, text || "");
       });
     } else {
-      UI.askUser({ agent: a, input: false, message: t(ev.kind === "command" ? "real.ask.command" : "real.ask.write", { path: ev.path, size: ev.size }) }).then(r => {
+      UI.askUser({ agent: a, input: false, message: t(ev.kind === "command" ? "real.ask.command" : ev.kind === "tool" ? "real.ask.tool" : "real.ask.write", { path: ev.path, size: ev.size }) }).then(r => {
         entry.allow = r.ok;
         desktop.agent.answer(ev.askId, r.ok);
       });
