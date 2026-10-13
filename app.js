@@ -134,13 +134,47 @@ const AGENTS = [
       result: "Feature implemented and written into the project.",
     },
   },
+  // 安全组：攻击者（红队）找漏洞，安全员（蓝队）核实并安排修复。specialist：没点名时不会被随手派到无关的任务。
+  {
+    id: "attacker", team: "security", color: "#ef4444", specialist: true, localOnly: true, handsTo: "security",
+    brief: "You are the red team. Look for security weaknesses in THIS project's own code, reading it the way an attacker would: input handling and injection, authentication and access checks, secrets left in code, unsafe file or command use, risky dependencies, data exposed to users. Do NOT change any code. Write security/findings.md: one entry per finding with severity, the exact file and line, how to trigger it step by step, and the impact. Report only what you can point to in the code; if you cannot show evidence, say so instead of guessing. If you find nothing real, say that plainly. When there are findings, hand off to the security engineer (security) to judge them; that is the only teammate you hand off to — never straight to the developer.",
+    keywords: ["渗透", "攻击", "漏洞", "红队", "入侵", "破解", "注入",
+      "pentest", "penetration", "exploit", "vulnerability", "vulnerabilities", "attack", "red team", "hack", "injection", "xss"],
+    zh: {
+      name: "红客", role: "攻击者（红队）", skills: ["找漏洞", "渗透思路", "复现步骤", "风险评级"],
+      steps: ["正在像攻击者一样通读代码…", "正在尝试各种输入和绕过…", "正在整理漏洞和复现步骤…"],
+      result: "攻击报告已完成：列出了发现的漏洞、所在位置、触发方法和影响。",
+    },
+    en: {
+      name: "Attacker", role: "Attacker (red team)", skills: ["Finding holes", "Attack paths", "Reproduction", "Severity rating"],
+      steps: ["Reading the code like an attacker…", "Trying inputs and bypasses…", "Writing up findings and how to trigger them…"],
+      result: "Attack report ready: the weaknesses found, where they are, how to trigger them and their impact.",
+    },
+  },
+  {
+    id: "security", team: "security", color: "#22b8e6", specialist: true,
+    brief: "You are the security engineer (blue team). Read security/findings.md and check every finding against the actual code: confirm it, or reject it and say why (for example no evidence, cannot be triggered, already handled). Do NOT change code yourself. Write security/review.md: the confirmed issues ordered by severity, each with the concrete fix, then the rejected ones with the reason. If any confirmed issue needs a fix, you must hand off to the developer with the list of fixes. If asked to check a fix, verify it in the code and hand off to the attacker to retest only when a retest is really needed. If there is no findings file, review the project's security yourself and write the same document.",
+    keywords: ["安全", "加固", "防护", "权限", "加密", "蓝队", "防御", "鉴权", "隐私",
+      "security", "secure", "harden", "hardening", "auth", "authentication", "encryption", "blue team", "threat", "privacy"],
+    zh: {
+      name: "安盾", role: "安全员（蓝队）", skills: ["漏洞核实", "修复方案", "安全加固", "权限检查"],
+      steps: ["正在逐条核对漏洞报告…", "正在对照代码确认真假…", "正在整理修复方案…"],
+      result: "安全评审已完成：确认了真实的问题并给出修复方案，驳回了证据不足的。",
+    },
+    en: {
+      name: "Security", role: "Security engineer (blue team)", skills: ["Verifying findings", "Fix plans", "Hardening", "Access checks"],
+      steps: ["Going through the findings one by one…", "Checking each against the code…", "Writing up the fixes…"],
+      result: "Security review ready: real issues confirmed with fixes, unsupported ones rejected.",
+    },
+  },
 ];
 
-// 团队：每个团队在 3D 办公室里占一座悬浮岛（顺序对应岛的位置：左、右、前）
+// 团队：每个团队在 3D 办公室里占一座悬浮岛（顺序是绕着大脑一圈的顺序）
 const TEAMS = [
   { id: "product", color: "#2fbf8f", zh: "产品组", en: "Product" },
   { id: "quality", color: "#5b86ff", zh: "质量组", en: "Quality" },
   { id: "engineering", color: "#e0556b", zh: "工程组", en: "Engineering" },
+  { id: "security", color: "#a855f7", zh: "安全组", en: "Security" },
 ];
 
 // 交接链，对应做一个项目的步骤：需求 → 设计 → 写代码 → 测试 → 审查 → 部署 → 文档
@@ -153,6 +187,8 @@ const HANDOFF = {
   tester:   { to: "reviewer", tpl: "tpl.fromTester" },
   reviewer: { to: "devops",   tpl: "tpl.fromReviewer" },
   devops:   { to: "writer",   tpl: "tpl.fromDevops" },
+  attacker: { to: "security", tpl: "tpl.fromAttacker" },
+  security: { to: "developer", tpl: "tpl.fromSecurity" },
 };
 
 // 各岗位能写的文件范围，由 App 强制执行：不是自己职责内的文件写不了，只能交接给对口的同事。
@@ -162,6 +198,8 @@ const WRITE_SCOPE = {
   reviewer: { allow: ["^docs/"], hint: "review notes under docs/" },
   designer: { allow: ["^design/", "^docs/"], hint: "mockups under design/ and design notes under docs/" },
   writer:   { allow: ["^docs/", "\\.(md|txt)$"], hint: "documentation: Markdown or text files" },
+  attacker: { allow: ["^security/"], hint: "attack reports under security/" },
+  security: { allow: ["^security/", "^docs/"], hint: "security reviews under security/ and docs/" },
   tester:   { allow: ["^tests?/", "^__tests__/", "^docs/", "(^|/)test_[^/]+$", "[._-](test|spec)\\.[a-z]+$"], hint: "tests under tests/ and test docs under docs/" },
   devops:   { allow: ["^docs/", "^\\.github/", "^scripts?/", "^deploy/", "(^|/)Dockerfile[^/]*$", "(^|/)docker-compose[^/]*$", "\\.(ya?ml|sh|bat|ps1|toml|ini|conf)$", "(^|/)\\.[a-z]+ignore$", "(^|/)Makefile$"], hint: "deployment files: Dockerfile, CI workflows, scripts, and docs under docs/" },
 };
@@ -248,13 +286,14 @@ function pickAgent(title) {
   const text = title.toLowerCase();
   let best = null, bestScore = 0;
   for (const a of AGENTS) {
-    const score = a.keywords.reduce((n, k) => n + (keywordHit(text, k) ? 1 : 0), 0);
+    // 专职岗位（安全组）的关键词更明确，命中时优先于通用岗位
+    const score = a.keywords.reduce((n, k) => n + (keywordHit(text, k) ? 1 : 0), 0) * (a.specialist ? 1.5 : 1);
     if (score > bestScore) { best = a; bestScore = score; }
   }
   if (best) return best.id;
   // 没有关键词命中：派给手头任务最少的员工
   const busy = a => tasks.filter(x => x.agentId === a.id && x.status !== "done").length;
-  return AGENTS.slice().sort((a, b) => busy(a) - busy(b))[0].id;
+  return AGENTS.filter(a => !a.specialist).sort((a, b) => busy(a) - busy(b))[0].id;
 }
 
 // 当前模式下，这个任务是否需要用户批准；返回原因（reason.* 的后缀），空字符串表示不需要
@@ -400,12 +439,15 @@ function realError(res) {
   return I18N[LANG][k] ? t(k, { detail: res.detail || "" }) : (res.error || "") + (res.detail ? " " + res.detail : "");
 }
 function startReal(task, a) {
+  // 交接出来的任务：带上用户最初的要求，让接手的人知道整件事的目标，而不只是眼前这一步
+  let root = task;
+  for (let i = 0; i < 12 && root.parent; i++) { const p = tasks.find(x => x.id === root.parent); if (!p) break; root = p; }
   task.real = true;
   task.started = true;
   task.stepText = t("real.thinking", { step: 1, source: "…" });
   task.blocked = false;
-  desktop.agent.run({ taskId: task.id, title: taskTitle(task), agentName: agentName(a), agentRole: agentRole(a), brief: a.brief, context: task.context || "",
-    scope: WRITE_SCOPE[a.id] || null, chat: !!task.chat, history: task.history || [],
+  desktop.agent.run({ taskId: task.id, title: taskTitle(task), agentName: agentName(a), agentRole: agentRole(a), brief: a.brief, context: task.context || "", origin: root !== task ? taskTitle(root) : "",
+    scope: WRITE_SCOPE[a.id] || null, localOnly: !!a.localOnly, chat: !!task.chat, history: task.history || [],
     team: AGENTS.filter(x => x.id !== a.id).map(x => x.id + ": " + x.en.role).join("; "), allowHandoff: !!task.handoff && (task.depth || 0) < 6,
     mode, lang: LANG }).then(res => {
     task.status = "done";
@@ -430,7 +472,7 @@ function startReal(task, a) {
       UI.toastDone(task);
       // 没有实际产出就不往下传：免得后面的人对着空气干活
       if (res.handoff && !task.files.length && res.handoff.to !== task.from) task.result += "\n\n" + t("real.noOutputNoHandoff");
-      else proposeHandoff(task, a, res.handoff);   // 员工认为需要别人接着做时才交接
+      else proposeHandoff(task, a, retestAfterFix(task, a) || res.handoff);   // 员工认为需要别人接着做时才交接
     } else if (task.cancelled) {
       addLog("log.cancelled", { task: snap(task) });
     } else {
@@ -488,8 +530,19 @@ function handoffFrom(cur, a) {
 
 // 真实执行时的交接：由员工自己提出（交给谁、做什么），不是固定流水线。
 // 除了「完全访问」模式，交接都要用户批准。
+// 安全员安排的修复做完后，必须让攻击者复测一次：修复本身可能没修好，或带来新漏洞。
+// 只强制一轮（这条任务链上攻击者已经出场两次就不再强制），免得来回没完。
+function retestAfterFix(task, a) {
+  if (a.id !== "developer" || task.from !== "security") return null;
+  let rounds = 0;
+  for (let p = task; p; p = p.parent && tasks.find(x => x.id === p.parent)) if (p.agentId === "attacker") rounds++;
+  return rounds >= 2 ? null : { to: "attacker", task: t("route.retest") };
+}
+
 function proposeHandoff(cur, a, h) {
   if (!h || !agentById(h.to) || h.to === a.id) return;
+  // 有固定下一站的岗位（攻击者的报告必须先经安全员核实）：不管它想交给谁，都改交给那一位
+  if (a.handsTo && h.to !== a.handsTo) h = { to: a.handsTo, task: t("route." + a.id) };
   const next = createTask(h.task, h.to, { handoff: true, from: a.id, parent: cur.id, topic: cur.topic });
   next.depth = (cur.depth || 0) + 1;
   next.context = (agentName(a) + " (" + agentRole(a) + "): " + (cur.result || "")).slice(0, 3000);

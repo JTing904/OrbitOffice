@@ -484,6 +484,71 @@ def build_island_engineering():
     export("island_engineering")
 
 
+def build_island_security():
+    """安全作战室：威胁态势大屏、金库门、储物柜和警示灯、护盾发生器、靶子和圆凳。"""
+    reset()
+    random.seed(31)
+    dark, white, metal = mat("Dark", "#22252b", 0.4), mat("White", "#eef1f6", 0.5), mat("Metal", "#5b6068", 0.4, metal=0.6)
+    steel = mat("Steel", "#8a929e", 0.3, metal=0.8)
+    red, cyan = mat("AlertRed", "#3a0a10", 0.4, emit="#ef4444"), mat("ShieldCyan", "#06222b", 0.3, emit="#38bdf8")
+    root = island_base(6, 4)   # 小格地板
+
+    # 威胁态势大屏（两张桌子之间的后方）：经纬网格、雷达圈、红色告警点和青色安全点
+    for sx in (-1, 1):
+        capsule("ScreenPost", 0.04, 2.1, (sx * 1.25, 1.05, -2.6), metal, root, segs=10)
+    box("ThreatScreen", (2.9, 1.3, 0.08), (0, 1.55, -2.6), dark, root, bevel=0.036, segs=4)
+    grid = mat("GridLine", "#0b2530", 0.4, emit="#1f6f8a")
+    for i in range(5):
+        box("GridH", (2.7, 0.012, 0.012), (0, 1.07 + i * 0.24, -2.552), grid, root, bevel=0.002)
+    for i in range(8):
+        box("GridV", (0.012, 1.14, 0.012), (-1.26 + i * 0.36, 1.55, -2.552), grid, root, bevel=0.002)
+    for R in (0.22, 0.42):
+        torus("Radar", R, 0.012, (-0.72, 1.55, -2.545), cyan, root, axis="z", major=40, minor=6)
+    for x, y, m in ((-0.72, 1.55, cyan), (0.3, 1.85, red), (0.95, 1.3, red), (0.55, 1.5, cyan), (1.15, 1.9, cyan), (0.1, 1.2, cyan), (-0.2, 1.75, red)):
+        sphere("Blip", 0.045, (x, y, -2.545), m, root, scale=(1, 1, 0.4), segs=12, rings=8)
+
+    # 金库门（左后角）：门框、圆门、转盘把手
+    box("VaultFrame", (1.5, 1.7, 0.3), (-3.6, 0.85, -2.7), mat("VaultFrame", "#2b3038", 0.5, metal=0.4), root, bevel=0.06, segs=4)
+    cyl("VaultDoor", 0.66, 0.12, (-3.6, 0.9, -2.52), steel, root, segs=40, bevel=0.03, axis="z")
+    torus("VaultWheel", 0.3, 0.03, (-3.6, 0.9, -2.42), dark, root, axis="z", major=32, minor=8)
+    for k in range(3):
+        a = k * math.pi / 3
+        capsule("VaultSpoke", 0.022, 0.6, (-3.6, 0.9, -2.42), dark, root, segs=8, axis="x").rotation_euler = (0, a, 0)
+    sphere("VaultHub", 0.07, (-3.6, 0.9, -2.41), steel, root, segs=14, rings=10)
+    for k in range(8):
+        a = k * math.pi / 4
+        sphere("VaultBolt", 0.035, (-3.6 + math.cos(a) * 0.55, 0.9 + math.sin(a) * 0.55, -2.455), dark, root, segs=10, rings=8)
+
+    # 储物柜 + 警示灯（右后角）
+    locker = mat("Locker", "#3b4a6b", 0.5, metal=0.3)
+    for x in (3.3, 3.85):
+        box("Locker", (0.5, 1.8, 0.5), (x, 0.9, -2.65), locker, root, bevel=0.03, segs=3)
+        for row in range(3):
+            box("LockerVent", (0.28, 0.02, 0.02), (x, 1.45 + row * 0.07, -2.395), dark, root, bevel=0.004)
+        sphere("LockerKnob", 0.03, (x + 0.15, 0.95, -2.39), steel, root, segs=10, rings=8)
+    cyl("BeaconBase", 0.12, 0.06, (3.55, 1.83, -2.65), dark, root, segs=18)
+    sphere("Beacon", 0.11, (3.55, 1.93, -2.65), red, root, scale=(1, 1.15, 1), segs=16, rings=10)
+
+    # 护盾发生器（左前）：六边形基座、光环、悬浮的护盾
+    cyl("ShieldBase", 0.48, 0.5, (-4.0, 0.25, 2.2), mat("ShieldBase", "#262c3a", 0.5, metal=0.4), root, r_top=0.38, segs=6, smooth=False, bevel=0.02)
+    cyl("ShieldCap", 0.34, 0.05, (-4.0, 0.525, 2.2), dark, root, segs=6, smooth=False)
+    torus("ShieldRing", 0.34, 0.02, (-4.0, 0.6, 2.2), cyan, root, axis="y", major=36, minor=6)
+    sphere("ShieldBody", 0.5, (-4.0, 1.2, 2.2), cyan, root, scale=(0.1, 0.78, 0.68), segs=24, rings=14)
+    sphere("ShieldKeyhole", 0.085, (-3.945, 1.28, 2.2), white, root, scale=(0.3, 1, 1), segs=16, rings=10)   # 钥匙孔
+    box("ShieldKeyslot", (0.022, 0.24, 0.07), (-3.945, 1.13, 2.2), white, root, bevel=0.01)
+
+    # 靶子（右前）：三脚支架上的环形靶，旁边两张圆凳
+    for dz in (-0.3, 0.3):
+        capsule("TargetLeg", 0.025, 1.3, (4.05, 0.62, 2.2 + dz), metal, root, segs=8)
+    target_mats = [mat("TargetRed", "#c0392b", 0.7), white, mat("TargetRed", "#c0392b", 0.7), white, red]
+    for i, (r, m) in enumerate(zip((0.5, 0.4, 0.3, 0.2, 0.09), target_mats)):
+        cyl("TargetRing", r, 0.03, (4.05 - i * 0.012, 1.25, 2.2), m, root, segs=36, axis="x")
+    for z in (1.35, 3.0):
+        cyl("Stool", 0.22, 0.07, (3.85, 0.46, z), locker, root, segs=20, bevel=0.025)
+        capsule("StoolLeg", 0.035, 0.46, (3.85, 0.23, z), metal, root, segs=10)
+    export("island_security")
+
+
 # ---------- 共享大脑 ----------
 def build_brain():
     reset()
@@ -511,6 +576,8 @@ def build_brain():
     export("brain")
 
 
-for build in (build_character, build_desk, build_chair, build_island_product, build_island_quality, build_island_engineering, build_brain):
-    build()
+ONLY = argv[2].split(",") if len(argv) > 2 else None   # 第三个参数：只重新生成这几个，例如 island_security
+for build in (build_character, build_desk, build_chair, build_island_product, build_island_quality, build_island_engineering, build_island_security, build_brain):
+    if not ONLY or build.__name__[len("build_"):] in ONLY:
+        build()
 print("ALL_DONE")

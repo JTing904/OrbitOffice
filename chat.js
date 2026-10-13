@@ -93,7 +93,7 @@ const ChatUI = (() => {
     if (!(window.desktop && desktop.agent && desktop.agent.say)) return false;
     const state = talk = { stop: false, typing: null };
     const order = [];
-    for (const id of ["planner", pickAgent(topic), "designer", "developer", "tester", "reviewer", "devops", "writer", "debugger"]) {
+    for (const id of ["planner", pickAgent(topic), "designer", "developer", "tester", "reviewer", "devops", "writer", "debugger", "security", "attacker"]) {
       const a = agentById(id);
       if (a && !order.includes(a)) order.push(a);
     }

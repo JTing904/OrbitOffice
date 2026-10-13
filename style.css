@@ -579,3 +579,11 @@ select option { background: #12172b; color: var(--ink); }
 .conn-tools { font: 500 11.5px/1.7 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
 .conn-add .set-select { flex: 0 1 190px; }
 .conn-add .set-input { max-width: none; }
+
+/* 设置：攻击者的授权目标 */
+.set-subhead { margin: 20px 0 8px; font-size: 13px; font-weight: 600; color: var(--ink); }
+.set-targets[hidden] { display: none; }
+.target-tags { display: flex; flex-wrap: wrap; gap: 7px; margin: 8px 0; }
+.target-tag { display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 10px; border-radius: 8px; background: rgba(168, 85, 247, .14); border: 1px solid rgba(168, 85, 247, .32); font: 500 12px var(--mono); }
+.target-tag .tag-x { width: 18px; height: 18px; padding: 0; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 11px; }
+.target-tag .tag-x:hover { background: rgba(255, 255, 255, .12); color: var(--ink); }

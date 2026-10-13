@@ -207,8 +207,18 @@ function findBlender() {
   } catch (_) { return null; }
 }
 const currentCaps = () => ({ commands: !!config.caps.commands, blender: config.caps.commands ? findBlender() : null });
-ipcMain.handle("caps:get", () => ({ commands: !!config.caps.commands, blenderFound: !!findBlender() }));
-ipcMain.handle("caps:set", (_e, caps) => { config.caps.commands = !!(caps && caps.commands); saveConfig(); return { commands: config.caps.commands, blenderFound: !!findBlender() }; });
+// 授权目标：攻击者可以测试的、本机以外的主机/IP（用户自己拥有并允许被测的）。只留主机名或 IP。
+const cleanTargets = list => [...new Set((Array.isArray(list) ? list : []).map(t => String(t || "").trim().toLowerCase()
+  .replace(/^[a-z][a-z0-9+.-]*:\/\//, "").replace(/\/.*$/, "").replace(/:\d+$/, "").replace(/^\[|\]$/g, ""))
+  .filter(t => /^(\d{1,3}(\.\d{1,3}){3}|([a-z0-9-]+\.)+[a-z]{2,}|[a-z0-9-]+)$/i.test(t) && !/^(localhost|127\.|0\.0\.0\.0|::1)/.test(t)))].slice(0, 30);
+const currentTargets = () => cleanTargets(config.caps.targets);
+ipcMain.handle("caps:get", () => ({ commands: !!config.caps.commands, blenderFound: !!findBlender(), targets: currentTargets() }));
+ipcMain.handle("caps:set", (_e, caps) => {
+  if (caps && "commands" in caps) config.caps.commands = !!caps.commands;
+  if (caps && "targets" in caps) config.caps.targets = cleanTargets(caps.targets);
+  saveConfig();
+  return { commands: !!config.caps.commands, blenderFound: !!findBlender(), targets: currentTargets() };
+});
 
 // ---- 连接器（MCP）：接上外部工具给员工用 ----
 // connector: { id, name, type: "stdio" | "http", command, url, enabled, trusted, secrets: [名字] }
@@ -362,11 +372,11 @@ ipcMain.handle("agent:run", async (e, req) => {
     return await runAgent({
       projectDir: config.projectDir, title: String(req.title || "").slice(0, 2000),
       agentName: String(req.agentName || "Agent").slice(0, 60), agentRole: String(req.agentRole || "").slice(0, 80),
-      brief: String(req.brief || "").slice(0, 1000), context: String(req.context || "").slice(0, 3000),
+      brief: String(req.brief || "").slice(0, 1000), context: String(req.context || "").slice(0, 3000), origin: String(req.origin || "").slice(0, 600),
       team: String(req.team || "").slice(0, 800), allowHandoff: !!req.allowHandoff, caps: currentCaps(),
       chat: !!req.chat, history: Array.isArray(req.history) ? req.history.slice(-8) : [],
       scope: req.scope && Array.isArray(req.scope.allow) ? { allow: req.scope.allow.slice(0, 20).map(String), hint: String(req.scope.hint || "").slice(0, 200) } : null,
-      mode: req.mode, lang: req.lang,
+      mode: req.mode, lang: req.lang, localOnly: !!req.localOnly, targets: req.localOnly ? currentTargets() : [],
     }, {
       sources: () => config.sources || [],
       alts: altModels,

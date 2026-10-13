@@ -463,10 +463,35 @@ const UI = (() => {
       box.type = "checkbox";
       sw.append(box, el("span", "track"));
       const blender = el("p", "set-note");
-      const show = c => { box.checked = c.commands; blender.textContent = c.blenderFound ? t("set.caps.blender") : ""; blender.hidden = !c.blenderFound; };
+      // 授权目标：攻击者可测的、本机以外的主机/IP。默认只有本机。
+      let targets = [];
+      const tagBox = el("div", "target-tags");
+      const tInput = el("input", "set-input mono");
+      tInput.type = "text"; tInput.spellcheck = false; tInput.placeholder = t("set.caps.targets.ph");
+      const saveTargets = next => d.caps.set({ targets: next }).then(c => { targets = c.targets || []; drawTags(); });
+      const drawTags = () => {
+        tagBox.replaceChildren();
+        if (!targets.length) { tagBox.append(el("span", "set-note", t("set.caps.targets.none"))); return; }
+        for (const host of targets) {
+          const tag = el("span", "target-tag");
+          tag.append(el("code", null, host), button("tag-x", "✕", () => saveTargets(targets.filter(h => h !== host))));
+          tagBox.append(tag);
+        }
+      };
+      const addTarget = () => { const v = tInput.value.trim(); if (!v) return; tInput.value = ""; saveTargets(targets.concat(v)); };
+      tInput.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); addTarget(); } });
+      const addRow = el("div", "set-inline");
+      addRow.append(tInput, button("ghost small", t("set.caps.targets.add"), addTarget));
+      const targetWrap = el("div", "set-targets");
+      targetWrap.append(el("p", "set-note", t("set.caps.targets.note")), tagBox, addRow);
+      const show = c => {
+        box.checked = c.commands; blender.textContent = c.blenderFound ? t("set.caps.blender") : ""; blender.hidden = !c.blenderFound;
+        targets = c.targets || []; drawTags(); targetWrap.hidden = !c.commands;
+      };
       box.addEventListener("change", () => d.caps.set({ commands: box.checked }).then(show));
       d.caps.get().then(show);
-      caps.append(row(t("set.caps.commands"), sw), el("p", "set-note", t("set.caps.note")), blender);
+      caps.append(row(t("set.caps.commands"), sw), el("p", "set-note", t("set.caps.note")), blender,
+        el("h4", "set-subhead", t("set.caps.targets")), targetWrap);
     } else caps.append(el("p", "set-note", t("set.project.web")));
 
     // 连接器：接上外部工具
@@ -874,7 +899,7 @@ const UI = (() => {
     box.hidden = !in3d;
     if (!in3d) return;
     const lay = Office3D.getLayout();
-    const X0 = -16, X1 = 16, Z0 = -12, Z1 = 16;
+    const X0 = -16, X1 = 16, Z0 = -14, Z1 = 22;
     const pos = (x, z) => [((x - X0) / (X1 - X0)) * 100, ((z - Z0) / (Z1 - Z0)) * 100];
     for (const isl of lay.islands) {
       const tm = teamById(isl.id);

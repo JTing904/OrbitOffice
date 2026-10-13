@@ -11,8 +11,9 @@
   window.Office3D = O;
 
   const FONT = '"Microsoft YaHei","PingFang SC",system-ui,sans-serif';
-  const ISLAND_ANGLES = [-2 * Math.PI / 3, 2 * Math.PI / 3, 0];   // 三座岛围着大脑放射状摆放（绕竖直轴的角度），开口朝外
-  const ISLAND_RADIUS = 10.5;
+  // 岛围着大脑放射状摆放（绕竖直轴的角度），开口朝外。默认是三座岛的摆法；四座岛时在 init 里换成每 90° 一座。
+  let ISLAND_ANGLES = [-2 * Math.PI / 3, 2 * Math.PI / 3, 0];
+  let ISLAND_RADIUS = 10.5;
   const BRAIN_POS = [0, 2.4, 0];
   const ISLAND_W = 8.8, ISLAND_D = 6.4;   // 岛的宽和进深（与 Blender 模型一致）
   // 岛内（局部）工位坐标：两人一岛或三人一岛
@@ -40,6 +41,8 @@
     devops: { acc: ["AccHeadset", "AccCap"], hair: 0x22252b },
     designer: { acc: [], hair: 0x8a5a3c },
     developer: { acc: ["AccGlasses", "AccHeadset"], hair: 0x1f2937 },
+    attacker: { acc: ["AccCap"], hair: 0x111318 },
+    security: { acc: ["AccTie", "AccHeadset"], hair: 0x3b3027 },
   };
   const ACCESSORIES = ["AccGlasses", "AccHeadset", "AccCap", "AccTie"];
   const models = {};   // 名字 -> 载入后的模型（THREE.Group），使用时 clone
@@ -56,7 +59,8 @@
   let WHITE;
   let tween = null;             // 镜头飞行动画
   const teamEls = {};           // teamId -> { name, cnt }
-  const HOME_POS = [0, 30, 27], HOME_TARGET = [0, 0.3, 0];
+  let HOME_POS = [0, 30, 27];
+  const HOME_TARGET = [0, 0.3, 0];
   let brain, brainEl, brainKey = "";
   const inset = { x: 0, y: 0, tx: 0, ty: 0 };   // 被界面遮挡的区域（右侧抽屉、底部指令栏），场景会平滑避让
 
@@ -500,6 +504,12 @@
 
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(40, 1.5, 0.1, 200);
+    // 四座岛：每 90° 一座（顺序绕一圈，相邻的岛才连线），离大脑远一点免得挤，镜头也跟着拉远
+    if (teams.length >= 4) {
+      ISLAND_ANGLES = [-3 * Math.PI / 4, 3 * Math.PI / 4, Math.PI / 4, -Math.PI / 4];
+      ISLAND_RADIUS = 13.5;
+      HOME_POS = [0, 44, 40];
+    }
     camera.position.set(...HOME_POS);
 
     scene.add(new THREE.HemisphereLight(0x9db4ff, 0x1a1f3a, 0.7));
@@ -507,7 +517,7 @@
     sun.position.set(-8, 20, 10);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
-    Object.assign(sun.shadow.camera, { left: -22, right: 22, top: 18, bottom: -16, near: 1, far: 80 });
+    Object.assign(sun.shadow.camera, { left: -27, right: 27, top: 24, bottom: -24, near: 1, far: 90 });
     scene.add(sun);
 
     buildWorld();

@@ -40,7 +40,7 @@ const I18N = {
     "tpl.fromDebugger": "为「{topic}」编写回归测试",
     "tpl.fromTester": "评审「{topic}」的改动和测试",
     "tpl.fromReviewer": "准备「{topic}」的发布与回滚方案",
-    "tpl.fromDevops": "撰写「{topic}」的发布说明",
+    "tpl.fromDevops": "撰写「{topic}」的发布说明", "route.retest": "复测：对照 security/review.md 检查每一项修复是否真的到位，并检查修复有没有带来新的漏洞；把复测结果写进 security/findings.md，没有问题就明确写「复测通过」；只要还有没修好的或新出现的问题，就必须交回给安全员", "route.attacker": "逐条核实 security/findings.md 里的漏洞，确认真假并给出修复方案", "tpl.fromAttacker": "核实「{topic}」的漏洞报告并给出修复方案", "tpl.fromSecurity": "修复「{topic}」里确认的安全问题",
 
     "log.assign": "你把「{title}」交给了 {a}",
     "log.assignPending": "你把「{title}」交给了 {a}，等待你批准（{reason}）",
@@ -134,7 +134,8 @@ const I18N = {
     "real.tool": "正在使用 {path}", "real.ask.tool": "想使用连接器：\n{path}", "td.ev.tool": "使用连接器 {path}", "td.ev.toolout": "返回：{text}",
     "td.ev.ask.tool.yes": "询问是否允许使用 {path} → 你同意了", "td.ev.ask.tool.no": "询问是否允许使用 {path} → 你拒绝了",
     "set.caps": "员工的权限", "set.caps.commands": "允许运行命令", "set.caps.note": "打开后，员工可以在项目文件夹里运行命令，比如跑测试、跑脚本。除了「完全访问」模式，每条命令运行前都会问你。明显危险的命令始终会被拦下。",
-    "set.caps.blender": "检测到 Blender：允许运行命令后，员工可以用它的后台模式生成模型。", "real.ask.write": "想写入文件：\n{path}（{size} 个字符）",
+    "set.caps.blender": "检测到 Blender：允许运行命令后，员工可以用它的后台模式生成模型。",
+    "set.caps.targets": "攻击者的授权目标", "set.caps.targets.note": "攻击者（红队）默认只能测试这个项目和本机（localhost）。如果你想让它测试自己的服务器或虚拟机，把主机名或 IP 加进来——只有列在这里的目标才允许，其余一律拦下。只填你自己拥有、并且允许被测试的目标。", "set.caps.targets.ph": "例如 192.168.1.50 或 myserver.local", "set.caps.targets.add": "添加", "set.caps.targets.none": "只限本机（localhost）。", "real.ask.write": "想写入文件：\n{path}（{size} 个字符）",
     "real.done.files": "{summary}\n\n改动的文件：{files}", "real.done.nofiles": "（这次没有改动任何文件）", "real.failed": "没有完成：{error}",
     "real.e.no-project": "还没有选择项目文件夹（在设置里选）", "real.e.no-ai": "AI 池里没有可用的 AI", "real.e.all-sources-failed": "所有 AI 都调用失败（{detail}）",
     "real.e.too-many-steps": "步骤太多，已停止", "real.e.crash": "程序出错（{detail}）",
@@ -188,7 +189,7 @@ const I18N = {
     "tpl.fromDebugger": "Write regression tests for “{topic}”",
     "tpl.fromTester": "Review the changes and tests for “{topic}”",
     "tpl.fromReviewer": "Prepare the release and rollback plan for “{topic}”",
-    "tpl.fromDevops": "Write release notes for “{topic}”",
+    "tpl.fromDevops": "Write release notes for “{topic}”", "route.retest": "Retest: check against security/review.md that each fix really works, and that the fixes did not introduce new weaknesses; write the retest result into security/findings.md, and say “retest passed” plainly if nothing is wrong; if anything is still broken or newly introduced, you must hand it back to the security engineer", "route.attacker": "Check every finding in security/findings.md against the code, confirm or reject it, and give the fix", "tpl.fromAttacker": "Verify the findings for “{topic}” and propose fixes", "tpl.fromSecurity": "Fix the confirmed security issues in “{topic}”",
 
     "log.assign": "You assigned “{title}” to {a}",
     "log.assignPending": "You assigned “{title}” to {a} — awaiting your approval ({reason})",
