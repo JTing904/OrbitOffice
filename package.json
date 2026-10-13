@@ -1,0 +1,14 @@
+{
+  "name": "myaioffice",
+  "version": "0.1.0",
+  "description": "MyAIOffice — a 3D office for your AI team",
+  "private": true,
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "models": "node tools/pack-models.js"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}

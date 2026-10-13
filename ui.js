@@ -1,0 +1,883 @@
+"use strict";
+
+// 界面层：页面切换（办公室 / 任务 / 大脑 / 设置）、员工面板、指令面板、提示条、小地图、桌面标题栏。
+// 依赖 app.js 里的全局数据与函数（tasks、AGENTS、addTask、setMode……），都在调用时才读取，所以本文件可先于 app.js 加载。
+const UI = (() => {
+  const $ = id => document.getElementById(id);
+  const el = (tag, cls, text) => {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  };
+  const setText = (node, text) => { if (node.textContent !== text) node.textContent = text; };
+  const button = (cls, text, onClick) => {
+    const b = el("button", cls, text);
+    b.type = "button";
+    if (onClick) b.addEventListener("click", onClick);
+    return b;
+  };
+
+  const VIEWS = ["office", "tasks", "brain", "settings"];
+  let in3d = false;
+  let panel = null;          // null | "tasks" | "agent" | "brain" | "settings"
+  let selected = null;       // 当前选中的员工 id
+  let tasksTab = "board";
+  let memQuery = "", memTeam = "all", memOpen = null;
+  let agentSig = "", agentRefs = {}, brainSig = "";
+  let palIndex = 0, palItems = [];
+  let detailId = null, detailSig = "", detailOpenFile = null;   // 任务详情页
+
+  // ---------- 页面切换 ----------
+  function open(name) {
+    if (!name || name === "office") return closeAll();
+    panel = name;
+    const inDrawer = name === "tasks" || name === "agent";
+    $("drawer").classList.toggle("open", inDrawer);
+    $("drawer").setAttribute("aria-hidden", String(!inDrawer));
+    $("sheet").classList.toggle("open", !inDrawer);
+    $("sheet").setAttribute("aria-hidden", String(inDrawer));
+    $("view-tasks").hidden = name !== "tasks";
+    $("view-agent").hidden = name !== "agent";
+    $("view-brain").hidden = name !== "brain";
+    $("view-settings").hidden = name !== "settings";
+    $("view-task").hidden = name !== "task";
+
+    if (name !== "agent") { selected = null; if (in3d) Office3D.setSelected(null); }
+    if (name === "tasks") showTasksTab();
+    if (name === "agent") { agentSig = ""; renderAgent(); }
+    if (name === "brain") buildBrain();
+    if (name === "settings") buildSettings();
+    if (name === "task") { detailSig = ""; renderTask(); }
+    syncChrome();
+  }
+
+  function closeAll() {
+    panel = null;
+    selected = null;
+    if (in3d) Office3D.setSelected(null);
+    $("drawer").classList.remove("open");
+    $("drawer").setAttribute("aria-hidden", "true");
+    $("sheet").classList.remove("open");
+    $("sheet").setAttribute("aria-hidden", "true");
+    syncChrome();
+  }
+
+  // 标签高亮、标题、场景避让
+  function syncChrome() {
+    const active = panel === "agent" || !panel ? "office" : panel === "task" ? "tasks" : panel;
+    document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.view === active));
+    setText($("drawer-title"), panel === "agent" ? t("ap.title") : t("tasks.title"));
+    setText($("sheet-title"), panel === "settings" ? t("set.title") : panel === "task" ? t("td.title") : t("nav.brain"));
+    updateInset();
+  }
+
+  // 让 3D 场景避开右侧抽屉和底部指令栏
+  function updateInset() {
+    const drawerOpen = (panel === "tasks" || panel === "agent") && window.innerWidth > 900;
+    document.body.classList.toggle("drawer-open", drawerOpen);
+    if (!in3d) return;
+    Office3D.setInset(drawerOpen ? Math.min(430, window.innerWidth * 0.4) : 0, $("task-form").offsetHeight + 22);
+  }
+
+  // ---------- 任务面板 ----------
+  function showTasksTab() {
+    document.querySelectorAll(".subtab").forEach(b => b.classList.toggle("active", b.dataset.sub === tasksTab));
+    $("board").hidden = tasksTab !== "board";
+    $("log").hidden = tasksTab !== "log";
+  }
+
+  function updateBadge() {
+    const pending = tasks.filter(x => x.status === "pending").length;
+    const active = tasks.filter(x => x.status === "queued" || x.status === "doing").length;
+    const n = pending || active;
+    const badge = $("tab-count");
+    badge.hidden = !n;
+    setText(badge, String(n));
+    badge.classList.toggle("alert", pending > 0);
+  }
+
+  // ---------- 员工面板 ----------
+  function selectAgent(id) {
+    selected = id;
+    if (in3d) Office3D.setSelected(id);
+    $("task-agent").value = id;
+    open("agent");
+  }
+  function focusTeam(id) { if (in3d) Office3D.focus(id); }
+
+  function renderAgent() {
+    if (panel !== "agent" || !selected) return;
+    const a = agentById(selected);
+    const st = agentStatus(a);
+    const recent = tasks.filter(x => x.agentId === a.id && x.status === "done").sort((p, q) => q.doneAt - p.doneAt).slice(0, 3);
+    const queued = tasks.filter(x => x.agentId === a.id && x.status === "queued").length;
+    const sig = [LANG, agentsVersion, st.key, st.cur && st.cur.id, st.pending && st.pending.id, queued, recent.map(r => r.id).join(",")].join("|");
+    if (sig !== agentSig) { agentSig = sig; buildAgentView(a, st, recent, queued); }
+
+    if (agentRefs.fill && st.cur) {
+      agentRefs.fill.style.width = `${Math.round(st.cur.progress * 100)}%`;
+      const steps = a[LANG].steps;
+      setText(agentRefs.step, (st.cur.real || st.cur.blocked) ? (st.cur.stepText || "") : steps[Math.min(steps.length - 1, Math.floor(st.cur.progress * steps.length))]);
+    }
+  }
+
+  function teamPill(team) {
+    const p = el("span", "team-pill");
+    p.style.setProperty("--tc", team.color);
+    p.append(el("i"), document.createTextNode(teamName(team)));
+    return p;
+  }
+
+  function buildAgentView(a, st, recent, queued) {
+    const v = $("view-agent");
+    v.replaceChildren();
+    v.style.setProperty("--c", agentColor(a));
+    agentRefs = {};
+
+    const head = el("div", "ap-head");
+    const chip = el("span", "chip", t("chip." + st.key));
+    chip.dataset.k = st.key;
+    const who = el("div", "ap-who");
+    who.append(el("h3", "ap-name", agentName(a)), el("div", "ap-role", agentRole(a)));
+    head.append(el("div", "avatar big", agentName(a)[0] || "?"), who, chip);
+
+    const teamRow = el("div", "ap-row");
+    teamRow.append(el("span", "eyebrow", t("ap.team")), teamPill(teamById(a.team)));
+
+    const skills = el("div", "ap-block");
+    const chips = el("div", "skills");
+    agentSkills(a).forEach(s => chips.append(el("span", null, s)));
+    skills.append(el("span", "eyebrow", t("ap.skills")), chips);
+
+    const cur = el("div", "ap-block");
+    cur.append(el("span", "eyebrow", t("ap.current")));
+    if (st.cur) {
+      const card = el("div", "ap-task");
+      card.append(el("div", "ap-task-title", taskTitle(st.cur)));
+      agentRefs.step = el("div", "ap-task-step");
+      const bar = el("div", "bar");
+      agentRefs.fill = el("i");
+      bar.append(agentRefs.fill);
+      card.append(agentRefs.step, bar);
+      if (queued) card.append(el("div", "ap-task-queue", t("ap.queue", { n: queued })));
+      cur.append(card);
+    } else if (st.pending) {
+      const card = el("div", "ap-task");
+      card.append(el("div", "ap-task-title", taskTitle(st.pending)),
+        el("div", "ap-task-step", t("board.needs", { reason: t("reason." + st.pending.reason) })));
+      const row = el("div", "actions");
+      row.append(button("mini ok", t("board.approve"), () => approveTask(st.pending.id)),
+        button("mini no", t("board.reject"), () => rejectTask(st.pending.id)));
+      card.append(row);
+      cur.append(card);
+    } else {
+      cur.append(el("div", "empty", t("ap.none")));
+    }
+
+    const rec = el("div", "ap-block");
+    rec.append(el("span", "eyebrow", t("ap.recent")));
+    if (!recent.length) rec.append(el("div", "empty", t("ap.noneRecent")));
+    for (const r of recent) {
+      const item = el("div", "ap-result");
+      item.append(el("div", "ap-result-title", taskTitle(r)), el("div", "ap-result-text", r.result || a[LANG].result));
+      rec.append(item);
+    }
+
+    const actions = el("div", "ap-actions");
+    actions.append(
+      button("primary", t("ap.assign"), () => { $("task-agent").value = a.id; $("task-title").focus(); }),
+      button("ghost", t("ap.chat"), () => ChatUI.open(a.id)),
+      button("ghost", t("ap.edit"), () => { open("settings"); focusAgentRow(a.id); }),
+    );
+    if (in3d) actions.insertBefore(button("ghost", t("ap.locate"), () => Office3D.focus(a.team)), actions.lastChild);   // 2D 回退时没有镜头可飞
+    v.append(head, teamRow, skills, cur, rec, actions);
+  }
+
+  // ---------- 大脑 ----------
+  function buildBrain() {
+    const v = $("view-brain");
+    v.replaceChildren();
+    const head = el("div", "brain-head");
+    head.append(el("div", "brain-orb"));
+    const titles = el("div");
+    titles.append(el("h2", null, t("brain.title")), el("p", null, ""));
+    titles.lastChild.id = "brain-sub";
+    head.append(titles);
+
+    const q = el("input", "search");
+    q.type = "search";
+    q.placeholder = t("brain.search");
+    q.value = memQuery;
+    q.addEventListener("input", () => { memQuery = q.value; renderMemories(); });
+
+    const filters = el("div", "filters");
+    filters.id = "mem-filters";
+    const mk = (id, label, color) => {
+      const b = button("filter", label, () => { memTeam = id; renderFilters(); renderMemories(); });
+      b.dataset.team = id;
+      if (color) { const d = el("i", "dot"); d.style.setProperty("--c", color); b.prepend(d); }
+      return b;
+    };
+    filters.append(mk("all", t("brain.all")));
+    TEAMS.forEach(tm => filters.append(mk(tm.id, teamName(tm), tm.color)));
+
+    const list = el("div", "mem-list");
+    list.id = "mem-list";
+    // 项目笔记：员工记下的决定，之后的任务会自动读到
+    const notes = el("section", "td-block");
+    const notesText = el("div", "td-text", t("brain.notes.none"));
+    notes.append(el("span", "eyebrow", t("brain.notes")), notesText);
+    if (window.desktop && desktop.files && desktop.files.notes) desktop.files.notes().then(text => { if (text) notesText.textContent = text; });
+    v.append(head, notes, q, filters, list);
+    renderFilters();
+    brainSig = "";
+    renderMemories();
+  }
+  function renderFilters() {
+    document.querySelectorAll("#mem-filters .filter").forEach(b => b.classList.toggle("active", b.dataset.team === memTeam));
+  }
+
+  const timeText = ms => new Date(ms).toLocaleString(LANG === "zh" ? "zh-CN" : "en-US", { hour12: false });
+
+  function renderMemories() {
+    const list = $("mem-list");
+    if (!list) return;
+    const done = tasks.filter(x => x.status === "done").sort((p, q) => q.doneAt - p.doneAt);
+    setText($("brain-sub"), t("brain.sub", { n: done.length }));
+
+    const needle = memQuery.trim().toLowerCase();
+    const shown = done.filter(x => {
+      const a = agentById(x.agentId);
+      if (memTeam !== "all" && a.team !== memTeam) return false;
+      return !needle || (taskTitle(x) + " " + agentName(a) + " " + (x.result || a[LANG].result)).toLowerCase().includes(needle);
+    });
+
+    list.replaceChildren();
+    if (!shown.length) list.append(el("div", "empty big", done.length ? t("brain.noMatch") : t("brain.empty")));
+    for (const x of shown) {
+      const a = agentById(x.agentId);
+      const open = memOpen === x.id;
+      const card = el("article", "mem" + (open ? " open" : ""));
+      card.style.setProperty("--c", agentColor(a));
+      card.tabIndex = 0;
+      const toggle = () => { memOpen = memOpen === x.id ? null : x.id; renderMemories(); };
+      card.addEventListener("click", toggle);
+      card.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
+
+      const top = el("div", "mem-top");
+      top.append(el("b", null, taskTitle(x)), el("time", null, new Date(x.doneAt).toTimeString().slice(0, 5)));
+      const meta = el("div", "mem-meta");
+      const who = el("span", "who");
+      who.append(el("i", "dot"), document.createTextNode(agentName(a)));
+      meta.append(who, teamPill(teamById(a.team)));
+      card.append(top, meta, el("div", "mem-result", x.result || a[LANG].result));
+
+      if (open) {
+        const detail = el("div", "mem-detail");
+        detail.append(el("div", "mem-line", `${t("brain.completed")}  ${timeText(x.doneAt)}`));
+        const parent = x.parent && tasks.find(p => p.id === x.parent);
+        const children = tasks.filter(c => c.parent === x.id);
+        if (parent || children.length) {
+          detail.append(el("span", "eyebrow", t("brain.chain")));
+          if (parent) detail.append(el("div", "mem-line", "← " + t("brain.from", { a: agentName(agentById(parent.agentId)), title: taskTitle(parent) })));
+          for (const c of children) detail.append(el("div", "mem-line", "→ " + t("brain.to", { a: agentName(agentById(c.agentId)), title: taskTitle(c) })));
+        }
+        detail.append(button("ghost small", t("td.process"), e => { e.stopPropagation(); openTask(x.id); }));
+        card.append(detail);
+      }
+      list.append(card);
+    }
+  }
+
+  // ---------- 任务详情：把员工做了什么完整摊开 ----------
+  function openTask(id) {
+    detailId = id;
+    detailOpenFile = null;
+    open("task");
+  }
+
+  function traceLine(ev) {
+    if (ev.type === "ask" && ev.kind === "question") return t(ev.answer ? "td.ev.ask.q" : "td.ev.ask.q.none", ev);
+    if (ev.type === "ask") return t((ev.kind === "command" ? "td.ev.ask.cmd." : "td.ev.ask.") + (ev.allow ? "yes" : "no"), ev);
+    return t("td.ev." + ev.type, ev);
+  }
+
+  function renderTask() {
+    if (panel !== "task") return;
+    const v = $("view-task");
+    const task = tasks.find(x => x.id === detailId);
+    if (!task) { v.replaceChildren(el("div", "empty big", t("common.none"))); return; }
+    const a = agentById(task.agentId);
+    const trace = task.trace || [];
+    const sig = [LANG, agentsVersion, task.status, trace.length, (task.files || []).join(","), detailOpenFile, task.stepText].join("|");
+    if (sig === detailSig) return;
+    detailSig = sig;
+
+    const keepScroll = v.parentNode.scrollTop;
+    v.replaceChildren();
+    v.style.setProperty("--c", agentColor(a));
+
+    const head = el("div", "td-head");
+    head.append(el("h2", null, taskTitle(task)));
+    const meta = el("div", "td-meta");
+    const who = el("span", "who");
+    who.append(el("i", "dot"), document.createTextNode(agentName(a) + " · " + agentRole(a)));
+    const st = el("span", "st", t("st." + task.status));
+    st.dataset.status = task.failed ? "failed" : task.status;
+    meta.append(who, st);
+    if (task.source) meta.append(el("span", "td-ai", t("td.ai") + "：" + task.source));
+    head.append(meta);
+    v.append(head);
+
+    const block = (titleKey, node) => { const b = el("section", "td-block"); b.append(el("span", "eyebrow", t(titleKey)), node); v.append(b); };
+
+    if (task.context) block("td.context", el("div", "td-text", task.context));
+
+    // 过程
+    const steps = el("ol", "td-steps");
+    if (!trace.length) {
+      steps.append(el("li", "empty", task.status === "done" && !task.real ? t("td.sim") : task.blocked ? (task.stepText || "") : t("td.nosteps")));
+    }
+    for (const ev of trace) {
+      if (ev.type === "thinking" && trace.indexOf(ev) > 0 && trace[trace.indexOf(ev) - 1].type === "thinking") continue;
+      const li = el("li", "td-step");
+      li.dataset.type = ev.type;
+      li.append(el("time", null, new Date(ev.at).toTimeString().slice(0, 8)), el("span", null, traceLine(ev)));
+      steps.append(li);
+    }
+    block("td.steps", steps);
+
+    // 写入的文件：可以直接查看内容
+    const files = el("div", "td-files");
+    if (!(task.files || []).length) files.append(el("div", "empty", t("td.nofiles")));
+    for (const f of task.files || []) {
+      const rowEl = el("div", "td-file");
+      const name = el("code", null, f);
+      const viewer = el("pre", "td-code");
+      viewer.hidden = detailOpenFile !== f;
+      const toggle = button("ghost small", t(detailOpenFile === f ? "td.hide" : "td.view"), () => { detailOpenFile = detailOpenFile === f ? null : f; renderTask(); });
+      const line = el("div", "td-file-head");
+      line.append(name, toggle);
+      if (window.desktop && desktop.files) line.append(button("ghost small", t("td.reveal"), () => desktop.files.reveal(f)));
+      rowEl.append(line, viewer);
+      if (detailOpenFile === f && window.desktop && desktop.files) {
+        desktop.files.read(f).then(r => { viewer.textContent = r.ok ? r.text : t("td.readfail", { error: r.error }); });
+      }
+      files.append(rowEl);
+    }
+    block("td.files", files);
+
+    if (task.status === "done") block("td.result", el("div", "td-text" + (task.failed ? " bad" : ""), task.result || a[LANG].result));
+    v.parentNode.scrollTop = keepScroll;
+  }
+
+  // ---------- 设置 ----------
+  function seg(items, current, onPick) {
+    const box = el("div", "seg");
+    for (const [id, label] of items) {
+      const b = button("seg-btn" + (id === current ? " active" : ""), label, () => {
+        box.querySelectorAll(".seg-btn").forEach(x => x.classList.toggle("active", x === b));
+        onPick(id);
+      });
+      box.append(b);
+    }
+    return box;
+  }
+  function section(titleKey) {
+    const s = el("section", "set-section");
+    s.append(el("h3", "eyebrow", t(titleKey)));
+    return s;
+  }
+  function row(labelText, control) {
+    const r = el("div", "set-row");
+    r.append(el("span", "set-label", labelText), control);
+    return r;
+  }
+
+  function buildSettings() {
+    const v = $("view-settings");
+    v.replaceChildren();
+
+    const general = section("set.general");
+    general.append(
+      row(t("set.language"), seg([["zh", "中文"], ["en", "English"]], LANG, applyLanguage)),
+      row(t("set.mode"), seg(MODE_IDS.map(m => [m, t("mode." + m)]), mode, setMode)),
+    );
+
+    const agents = section("set.agents");
+    agents.append(el("p", "set-note", t("set.agentsNote")));
+    for (const a of AGENTS) {
+      const r = el("div", "agent-row");
+      r.dataset.id = a.id;
+
+      const color = el("input", "swatch");
+      color.type = "color";
+      color.value = agentColor(a);
+      color.setAttribute("aria-label", t("set.color"));
+      color.addEventListener("input", () => setAgentEdit(a.id, "color", color.value));
+
+      const field = (labelKey, value, onInput, wide) => {
+        const l = el("label", wide ? "field wide" : "field");
+        const i = el("input");
+        i.type = "text";
+        i.value = value;
+        i.addEventListener("input", () => onInput(i.value));
+        l.append(el("span", null, t(labelKey)), i);
+        return l;
+      };
+      const fields = el("div", "fields");
+      fields.append(
+        field("set.name", agentName(a), val => setAgentEdit(a.id, "name", val.trim())),
+        field("set.role", agentRole(a), val => setAgentEdit(a.id, "role", val.trim())),
+        field("set.skills", agentSkills(a).join(", "), val => setAgentEdit(a.id, "skills", val.split(/[,，、]/).map(s => s.trim()).filter(Boolean)), true),
+      );
+      const reset = button("ghost small", t("set.reset"), () => { resetAgentEdit(a.id); buildSettings(); focusAgentRow(a.id); });
+      r.append(color, fields, reset);
+      agents.append(r);
+    }
+
+    // 项目文件夹（只有桌面 App 里可选）
+    const project = section("set.project");
+    const d = window.desktop;
+    if (d && d.pickProject) {
+      const pathText = el("code", "set-path", t("set.project.none"));
+      const show = p => { pathText.textContent = p || t("set.project.none"); };
+      d.getProject().then(show);
+      const r = row("", button("ghost", t("set.project.pick"), () => d.pickProject().then(show)));
+      r.firstChild.replaceWith(pathText);
+      project.append(el("p", "set-note", t("set.project.note")), r);
+    } else {
+      project.append(el("p", "set-note", t("set.project.web")));
+    }
+
+    // 员工的权限：是否允许运行命令
+    const caps = section("set.caps");
+    if (d && d.caps) {
+      const sw = el("label", "switch");
+      const box = el("input");
+      box.type = "checkbox";
+      sw.append(box, el("span", "track"));
+      const blender = el("p", "set-note");
+      const show = c => { box.checked = c.commands; blender.textContent = c.blenderFound ? t("set.caps.blender") : ""; blender.hidden = !c.blenderFound; };
+      box.addEventListener("change", () => d.caps.set({ commands: box.checked }).then(show));
+      d.caps.get().then(show);
+      caps.append(row(t("set.caps.commands"), sw), el("p", "set-note", t("set.caps.note")), blender);
+    } else caps.append(el("p", "set-note", t("set.project.web")));
+
+    // AI 池：NVIDIA NIM
+    const ai = section("set.ai");
+    if (d && d.pool) buildAiSettings(ai, d.pool);
+    else ai.append(el("p", "set-note", t("set.ai.web")));
+
+    const data = section("set.data");
+    const btns = el("div", "set-buttons");
+    btns.append(
+      button("ghost", t("set.export"), exportData),
+      button("ghost danger", t("set.clear"), () => { if (window.confirm(t("set.clearConfirm"))) clearData(); }),
+    );
+    data.append(btns);
+
+    const keys = section("set.shortcuts");
+    const kbd = (k, label) => row(label, el("kbd", null, k));
+    keys.append(kbd("Ctrl J", t("set.sc.chat")), kbd("Ctrl K", t("set.sc.palette")), kbd("Esc", t("set.sc.close")), kbd("F11", t("set.sc.full")));
+
+    v.append(general, project, caps, ai, agents, data, keys);
+  }
+
+  const AI_PRESETS = [
+    { name: "NVIDIA NIM", baseUrl: "https://integrate.api.nvidia.com/v1" },
+    { name: "Google Gemini", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai" },
+    { name: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1" },
+    { name: "Groq", baseUrl: "https://api.groq.com/openai/v1" },
+    { nameKey: "set.ai.local", baseUrl: "http://localhost:11434/v1" },
+    { nameKey: "set.ai.custom", baseUrl: "https://" },
+  ];
+
+  // 自动挑模型时的偏好（从前往后匹配）；都不匹配就用列表里的第一个。用户可以在「高级设置」里改。
+  const AI_NOT_CHAT = /embed|imagen|image|veo|tts|audio|speech|whisper|parakeet|aqa|live|rerank|guard|clip|vision-only|robotics|computer-use|lyria|nano-banana/i;
+  // 排在前面的几项是实测能通过工具调用写出文件的型号
+  const AI_MODEL_PREFS = [/gemini-3.5-flash$/i, /qwen3/i, /gpt-oss/i, /qwen.*coder/i, /deepseek/i, /llama-3\.3-70b/i, /gemini-[\d.]+-flash$/i, /gemini-[\d.]+-flash-lite$/i, /gemini.*flash/i, /gemini.*pro/i, /gpt-4o-mini/i, /llama.*70b/i, /mistral.*large/i];
+
+  function buildAiSettings(box, api) {
+    const list = el("div", "src-list");
+    const errText = r => {
+      const k = "set.ai.e." + (r.status || r.error);
+      return I18N[LANG][k] ? t(k) : (r.status ? r.status + " " : "") + r.error;
+    };
+
+    function card(s, index, total) {
+      const c = el("div", "src" + (s.enabled ? "" : " off"));
+      const status = el("p", "set-status");
+      const say = (key, vars, bad) => { status.textContent = t(key, vars); status.classList.toggle("bad", !!bad); };
+      const fail = r => say("set.ai.s.err", { error: errText(r) }, true);
+      const save = async patch => {
+        const r = await api.save(Object.assign(s, patch));
+        if (!r.ok) fail(r); else { Object.assign(s, r.source); c.classList.toggle("off", !s.enabled); }
+        return r.ok;
+      };
+      const text = (value, cls, onChange) => {
+        const i = el("input", "set-input " + cls);
+        i.type = "text"; i.value = value; i.spellcheck = false;
+        i.addEventListener("change", () => onChange(i.value.trim()));
+        return i;
+      };
+
+      // 第一行：名称、启用、排序、删除
+      const head = el("div", "src-head");
+      const on = el("label", "switch");
+      const onBox = el("input");
+      onBox.type = "checkbox"; onBox.checked = s.enabled;
+      onBox.addEventListener("change", () => save({ enabled: onBox.checked }));
+      on.append(onBox, el("span", "track"), el("em", null, t("set.ai.enabled")));
+      const up = button("ghost small", "↑", async () => { await api.move(s.id, -1); render(); });
+      const down = button("ghost small", "↓", async () => { await api.move(s.id, 1); render(); });
+      up.title = t("set.ai.up"); down.title = t("set.ai.down");
+      up.disabled = index === 0; down.disabled = index === total - 1;
+      head.append(el("span", "src-rank", String(index + 1)), text(s.name, "src-name", v => save({ name: v })), on,
+        button("ghost small danger", t("set.ai.remove"), async () => { if (window.confirm(t("set.ai.removeConfirm"))) { await api.remove(s.id); render(); } }));
+
+      // 接口地址
+      const url = text(s.baseUrl, "wide", v => save({ baseUrl: v }));
+
+      // Key
+      // 已保存的 Key 显示成打码的样子（开头几位 + 圆点 + 末尾几位）；点进去可以填新的
+      const key = el("input", "set-input wide mono");
+      key.type = "text"; key.autocomplete = "off"; key.spellcheck = false;
+      const keyHint = () => {
+        key.placeholder = !s.needsKey ? t("set.ai.noKeyNeeded") : t("set.ai.keyPh");
+        key.value = s.hasKey ? s.keyMask : "";
+        key.classList.toggle("masked", !!s.hasKey);
+      };
+      key.addEventListener("focus", () => { if (key.classList.contains("masked")) { key.value = ""; key.classList.remove("masked"); } });
+      key.addEventListener("blur", () => { if (!key.value.trim() && s.hasKey) keyHint(); });
+      keyHint();
+      const keyRow = el("div", "set-inline");
+      keyRow.append(key, button("ghost small", t("set.ai.save"), async () => {
+        if (!key.value.trim() || key.classList.contains("masked")) return;
+        const r = await api.setKey(s.id, key.value);
+        if (!r.ok) return fail(r);
+        s.hasKey = true; s.keyMask = r.keyMask; keyHint();
+        autoSetup();
+      }));
+
+      // 模型
+      const select = el("select", "set-select wide");
+      const fill = models => {
+        select.replaceChildren(new Option(t("set.ai.pick"), ""));
+        for (const id of models) select.append(new Option(id, id));
+        if (s.model && !models.includes(s.model)) select.append(new Option(s.model, s.model));
+        select.value = s.model || "";
+      };
+      fill(s.model ? [s.model] : []);
+      select.addEventListener("change", () => save({ model: select.value || null }));
+      const modelRow = el("div", "set-inline");
+      modelRow.append(select, button("ghost small", t("set.ai.load"), async () => {
+        say("set.ai.s.loading");
+        const r = await api.models(s.id);
+        if (!r.ok) return fail(r);
+        fill(r.models);
+        say("set.ai.s.models", { n: r.models.length });
+      }), button("ghost small", t("set.ai.test"), async () => {
+        say("set.ai.s.loading");
+        const r = await api.test(s.id);
+        if (r.ok) say("set.ai.s.testok", { text: r.text || "(empty)", ms: r.ms }); else fail(r);
+      }));
+
+      // 自动配置：查模型，按偏好挑几个候选，逐个发测试消息，第一个通的就用它
+      async function autoSetup() {
+        say("set.ai.s.loading");
+        const r = await api.models(s.id);
+        if (!r.ok) return fail(r);
+        fill(r.models);
+        // 候选：去掉不是用来对话的模型；每条偏好取版本最新的两个；最后补上列表里其余的，最多试 8 个
+        const chat = r.models.filter(id => !AI_NOT_CHAT.test(id));
+        const newestFirst = (a, b) => b.localeCompare(a, undefined, { numeric: true });
+        const picks = [];
+        const add = id => { if (id && !picks.includes(id)) picks.push(id); };
+        add(s.model);
+        for (const re of AI_MODEL_PREFS) chat.filter(id => re.test(id)).sort(newestFirst).slice(0, 2).forEach(add);
+        chat.slice().sort(newestFirst).forEach(add);
+        let last = { ok: false, error: "no-model" };
+        for (const id of picks.slice(0, 8)) {
+          say("set.ai.s.trying", { model: id });
+          await save({ model: id });
+          select.value = id;
+          last = await api.test(s.id);
+          if (last.ok) { api.scan(s.id); setTimeout(showScan, 800); return say("set.ai.s.connected", { model: id }); }   // 连上后在后台给这一家做体检
+          if (last.status === 401 || last.error === "no-key" || last.error === "timeout") break;   // Key 或网络的问题，换模型也没用
+        }
+        fail(last);
+      }
+
+      const tier = seg([["strong", t("set.ai.tier.strong")], ["light", t("set.ai.tier.light")]], s.tier, v => save({ tier: v }));
+      const line = (labelKey, control) => { const r = el("div", "src-row"); r.append(el("span", "src-label", t(labelKey)), control); return r; };
+      const order = el("div", "set-inline");
+      order.append(up, down, button("ghost small", t("set.ai.clear"), async () => { await api.setKey(s.id, ""); s.hasKey = false; s.keyMask = ""; keyHint(); say("set.ai.s.nokey"); }));
+      // 体检：实测这一家哪些模型真的能用
+      const scanText = el("span", "set-status");
+      const showScan = async () => {
+        const st = await api.scanStatus(s.id);
+        if (st.progress && st.progress.running) { scanText.textContent = t("set.ai.scan.running", st.progress); setTimeout(showScan, 1500); }
+        else if (st.verified) scanText.textContent = t("set.ai.scan.done", { count: st.verified.count, tested: st.verified.tested });
+        else scanText.textContent = t("set.ai.scan.none");
+      };
+      const scanRow = el("div", "set-inline");
+      scanRow.append(button("ghost small", t("set.ai.scan"), async () => { await api.scan(s.id); setTimeout(showScan, 500); }), scanText);
+      showScan();
+      const adv = el("details", "src-adv");
+      adv.append(el("summary", null, t("set.ai.advanced")), line("set.ai.url", url), line("set.ai.model", modelRow), line("set.ai.tier", tier), line("set.ai.scan.label", scanRow), line("set.ai.order", order));
+      c.append(head, line("set.ai.key", keyRow), status, adv);
+      if (!s.needsKey) keyRow.replaceChildren(button("ghost small", t("set.ai.connect"), autoSetup));
+      if (s.hasKey && s.model) say("set.ai.s.saved", { model: s.model }); else if (s.needsKey && !s.hasKey) say("set.ai.s.nokey");
+      return c;
+    }
+
+    async function render() {
+      const sources = await api.list();
+      list.replaceChildren(...sources.map((s, i) => card(s, i, sources.length)));
+      if (!sources.length) list.append(el("p", "set-note", t("set.ai.empty")));
+    }
+
+    const preset = el("select", "set-select");
+    AI_PRESETS.forEach((p, i) => preset.append(new Option(p.name || t(p.nameKey), String(i))));
+    const addRow = el("div", "set-inline src-add");
+    addRow.append(preset, button("primary", t("set.ai.add"), async () => {
+      const p = AI_PRESETS[Number(preset.value)];
+      await api.save({ name: p.name || t(p.nameKey), baseUrl: p.baseUrl, tier: "strong", enabled: true });
+      render();
+    }));
+    box.append(el("p", "set-note", t("set.ai.note")), list, addRow);
+    render();
+  }
+
+  function focusAgentRow(id) {
+    const r = document.querySelector(`.agent-row[data-id="${id}"]`);
+    if (!r) return;
+    r.scrollIntoView({ block: "center" });
+    r.classList.add("flash");
+    setTimeout(() => r.classList.remove("flash"), 1400);
+  }
+
+  // ---------- 指令面板 ----------
+  function paletteOpen() { return $("palette").classList.contains("open"); }
+  function openPalette() {
+    $("palette").classList.add("open");
+    $("palette").setAttribute("aria-hidden", "false");
+    $("pal-input").value = "";
+    palIndex = 0;
+    renderPalette();
+    $("pal-input").focus();
+  }
+  function closePalette() {
+    $("palette").classList.remove("open");
+    $("palette").setAttribute("aria-hidden", "true");
+  }
+  function buildPaletteItems(q) {
+    const text = q.trim();
+    const items = [];
+    if (text) items.push({ label: t("pal.dispatch", { text }), run: () => addTask(text, $("task-agent").value, $("task-handoff").checked), always: true });
+    for (const v of VIEWS) items.push({ label: t("pal.goto", { page: t("nav." + v) }), run: () => open(v) });
+    for (const a of AGENTS) items.push({ label: t("pal.agent", { name: agentName(a) }), run: () => selectAgent(a.id) });
+    for (const m of MODE_IDS) items.push({ label: t("pal.mode", { mode: t("mode." + m) }), run: () => setMode(m) });
+    items.push({ label: t("pal.chat"), run: () => ChatUI.open() });
+    items.push({ label: t("pal.lang"), run: () => applyLanguage(LANG === "zh" ? "en" : "zh") });
+    items.push({ label: t("pal.fullscreen"), run: toggleFullscreen });
+    if (in3d) items.push({ label: t("pal.focusAll"), run: () => Office3D.focus("all") });
+    const needle = text.toLowerCase();
+    return items.filter(it => it.always || !needle || it.label.toLowerCase().includes(needle)).slice(0, 9);
+  }
+  function renderPalette() {
+    palItems = buildPaletteItems($("pal-input").value);
+    palIndex = Math.min(palIndex, Math.max(0, palItems.length - 1));
+    const ul = $("pal-list");
+    ul.replaceChildren();
+    if (!palItems.length) ul.append(el("li", "pal-empty", t("pal.noResults")));
+    palItems.forEach((it, i) => {
+      const li = el("li", i === palIndex ? "active" : "", it.label);
+      li.addEventListener("mousemove", () => { if (palIndex !== i) { palIndex = i; renderPalette(); } });
+      li.addEventListener("click", () => runPalette(i));
+      ul.append(li);
+    });
+  }
+  function runPalette(i) {
+    const it = palItems[i];
+    if (!it) return;
+    closePalette();
+    it.run();
+  }
+
+  // ---------- 员工提问 / 请求批准（排队逐个显示）----------
+  const askQueue = [];
+  let asking = false;
+  function askUser(req) {
+    return new Promise(resolve => { askQueue.push({ req, resolve }); nextAsk(); });
+  }
+  function nextAsk() {
+    if (asking || !askQueue.length) return;
+    asking = true;
+    const { req, resolve } = askQueue.shift();
+    const a = req.agent;
+    $("ask-av").textContent = agentName(a)[0] || "?";
+    $("ask-av").style.setProperty("--c", agentColor(a));
+    $("ask-who").textContent = agentName(a);
+    $("ask-kind").textContent = t(req.input ? "ask.kind.question" : "ask.kind.approve");
+    $("ask-text").textContent = req.message;
+    const input = $("ask-input");
+    input.hidden = !req.input;
+    input.value = "";
+    input.placeholder = t("ask.placeholder");
+    $("ask-yes").textContent = t(req.input ? "ask.answer" : "ask.allow");
+    $("ask-no").textContent = t(req.input ? "ask.skip" : "ask.deny");
+    const done = ok => {
+      $("ask").classList.remove("open");
+      $("ask").setAttribute("aria-hidden", "true");
+      $("ask-yes").onclick = $("ask-no").onclick = input.onkeydown = null;
+      asking = false;
+      resolve({ ok: ok && (!req.input || !!input.value.trim()), text: input.value.trim() });
+      nextAsk();
+    };
+    $("ask-yes").onclick = () => done(true);
+    $("ask-no").onclick = () => done(false);
+    input.onkeydown = e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) done(true); };
+    $("ask").classList.add("open");
+    $("ask").setAttribute("aria-hidden", "false");
+    (req.input ? input : $("ask-yes")).focus();
+  }
+
+  // ---------- 提示条 ----------
+  function toast(text, opts = {}) {
+    const box = $("toasts");
+    const n = el("div", "toast");
+    n.dataset.kind = opts.kind || "info";
+    n.append(el("i", "toast-dot"), el("span", "toast-text", text));
+    const remove = () => { n.classList.remove("in"); setTimeout(() => n.remove(), 250); };
+    if (opts.action) n.append(button("toast-act", opts.actionLabel, () => { opts.action(); remove(); }));
+    box.append(n);
+    while (box.children.length > 3) box.firstChild.remove();
+    requestAnimationFrame(() => n.classList.add("in"));
+    setTimeout(remove, opts.ttl || 4500);
+  }
+  function toastPending(task) {
+    if (panel === "tasks") return;
+    toast(t("toast.pending", { a: agentName(agentById(task.agentId)) }),
+      { kind: "warn", actionLabel: t("toast.view"), action: () => open("tasks"), ttl: 9000 });
+  }
+  function toastDone(task) {
+    toast(t("toast.done", { a: agentName(agentById(task.agentId)), title: taskTitle(task) }), { kind: "ok", ttl: 9000, actionLabel: t("toast.view"), action: () => openTask(task.id) });
+  }
+
+  // ---------- 小地图 ----------
+  function buildMinimap() {
+    const box = $("minimap");
+    box.replaceChildren();
+    box.hidden = !in3d;
+    if (!in3d) return;
+    const lay = Office3D.getLayout();
+    const X0 = -16, X1 = 16, Z0 = -12, Z1 = 16;
+    const pos = (x, z) => [((x - X0) / (X1 - X0)) * 100, ((z - Z0) / (Z1 - Z0)) * 100];
+    for (const isl of lay.islands) {
+      const tm = teamById(isl.id);
+      const [l, tp] = pos(isl.x, isl.z);
+      const b = button("map-node island", "", () => Office3D.focus(isl.id));
+      b.style.cssText = `left:${l}%;top:${tp}%;--tc:${isl.color}`;
+      b.title = teamName(tm);
+      b.setAttribute("aria-label", teamName(tm));
+      box.append(b);
+    }
+    const [bl, bt] = pos(lay.brain.x, lay.brain.z);
+    const brainBtn = button("map-node brain", "", () => Office3D.focus("brain"));
+    brainBtn.style.cssText = `left:${bl}%;top:${bt}%`;
+    brainBtn.title = t("brain.title");
+    brainBtn.setAttribute("aria-label", t("brain.title"));
+    const all = button("map-all", t("map.all"), () => Office3D.focus("all"));
+    box.append(brainBtn, all);
+  }
+
+  // ---------- 全屏 / 标题栏 ----------
+  function toggleFullscreen() {
+    try {
+      const p = document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+      if (p && p.catch) p.catch(() => {});
+    } catch (_) { /* 浏览器不支持或被拦截时忽略 */ }
+  }
+
+  function setupTitlebar() {
+    const d = window.desktop;
+    if (!d || !d.windowControl) return;
+    document.body.classList.add("has-titlebar");
+    $("titlebar").hidden = false;
+    $("tb-min").addEventListener("click", () => d.windowControl("minimize"));
+    $("tb-max").addEventListener("click", () => d.windowControl("maximize"));
+    $("tb-close").addEventListener("click", () => d.windowControl("close"));
+  }
+
+  // ---------- 初始化与刷新 ----------
+  function init(opts) {
+    in3d = !!opts.in3d;
+    applyI18n();
+
+    $("tabs").addEventListener("click", e => {
+      const b = e.target.closest(".tab");
+      if (b) open(b.dataset.view);
+    });
+    $("task-tabs").addEventListener("click", e => {
+      const b = e.target.closest(".subtab");
+      if (b) { tasksTab = b.dataset.sub; showTasksTab(); }
+    });
+    $("drawer-close").addEventListener("click", closeAll);
+    $("sheet-close").addEventListener("click", closeAll);
+    $("sheet").addEventListener("mousedown", e => { if (e.target === $("sheet")) closeAll(); });
+    $("fs").addEventListener("click", toggleFullscreen);
+    $("palette-btn").addEventListener("click", openPalette);
+    window.addEventListener("resize", updateInset);
+
+    // 指令面板
+    $("palette").addEventListener("mousedown", e => { if (e.target === $("palette")) closePalette(); });
+    $("pal-input").addEventListener("input", () => { palIndex = 0; renderPalette(); });
+    $("pal-input").addEventListener("keydown", e => {
+      if (e.key === "ArrowDown") { e.preventDefault(); palIndex = Math.min(palItems.length - 1, palIndex + 1); renderPalette(); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); palIndex = Math.max(0, palIndex - 1); renderPalette(); }
+      else if (e.key === "Enter") { e.preventDefault(); runPalette(palIndex); }
+    });
+    document.addEventListener("keydown", e => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        if (paletteOpen()) closePalette(); else openPalette();
+      } else if (e.key === "Escape") {
+        if (paletteOpen()) closePalette();
+        else if (panel) closeAll();
+      }
+    });
+
+    buildMinimap();
+    setupTitlebar();
+    ChatUI.init();
+    open(tasks.some(x => x.status === "pending") ? "tasks" : "office");
+  }
+
+  function refresh() {
+    updateBadge();
+    if (panel === "agent") renderAgent();
+    else if (panel === "task") renderTask();
+    else if (panel === "brain") {
+      const sig = tasks.filter(x => x.status === "done").map(x => x.id).join(",");
+      if (sig !== brainSig) { brainSig = sig; renderMemories(); }
+    }
+  }
+
+  // 语言切换后：静态文字、小地图、已打开的面板、指令面板都重新生成
+  function onLanguage() {
+    applyI18n();
+    buildMinimap();
+    agentSig = "";
+    if (panel === "brain") buildBrain();
+    else if (panel === "settings") buildSettings();
+    detailSig = "";
+    syncChrome();
+    if (paletteOpen()) renderPalette();
+    ChatUI.render();
+  }
+
+  return { init, refresh, onLanguage, open, openTask, askUser, selectAgent, focusTeam, toast, toastPending, toastDone };
+})();

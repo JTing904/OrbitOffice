@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>聊天浮窗 · UI 设计稿</title>
+  <link rel="stylesheet" href="../../style.css">
+  <style>
+    /* ---- 设计稿页面本身 ---- */
+    html, body { height: auto; }
+    body { overflow: auto; padding: 36px 40px 70px; background: radial-gradient(ellipse at 50% 0%, #1d2552 0%, #0b0f24 50%, #05070f 100%) fixed; }
+    h1 { margin: 0 0 4px; font-size: 20px; font-weight: 650; letter-spacing: .04em; }
+    .sub { margin: 0 0 26px; color: var(--muted); font-size: 13px; line-height: 1.7; max-width: 900px; }
+    .row { display: flex; flex-wrap: wrap; gap: 40px; align-items: flex-start; margin-bottom: 44px; }
+    figure { margin: 0; }
+    figcaption { margin-top: 14px; font-size: 12.5px; line-height: 1.7; color: var(--muted); max-width: 440px; }
+    figcaption b { display: block; margin-bottom: 4px; color: var(--ink); font: 600 10.5px var(--mono); letter-spacing: .14em; text-transform: uppercase; }
+    figcaption ul { margin: 0; padding: 0; }
+    figcaption li { margin-left: 16px; }
+    .stage { position: relative; width: 1000px; height: 566px; border-radius: 18px; overflow: hidden; border: 1px solid var(--line-strong); box-shadow: 0 24px 70px rgba(0, 0, 0, .5); }
+    .stage-inner { position: absolute; left: 0; top: 0; width: 1422px; height: 804px; transform: scale(.7032); transform-origin: 0 0; background: url(scene.png) 0 0 / 1422px 804px no-repeat; }
+    .hl { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+    /* ---- 聊天浮窗（定稿后并入 style.css）---- */
+    .cw { width: 420px; height: 620px; display: flex; flex-direction: column; border-radius: 20px; overflow: hidden; background: rgba(11, 15, 30, .93); border: 1px solid var(--line-strong); backdrop-filter: blur(22px) saturate(140%); box-shadow: 0 30px 80px rgba(0, 0, 0, .6); }
+    .cw-head { display: flex; align-items: center; gap: 10px; padding: 12px 12px 10px 16px; cursor: grab; border-bottom: 1px solid var(--line); }
+    .cw-title { min-width: 0; }
+    .cw-title b { display: block; font-size: 14px; font-weight: 650; line-height: 1.25; }
+    .cw-title span { font: 500 10.5px var(--mono); letter-spacing: .08em; color: var(--muted); }
+    .cw-head .grow { flex: 1; }
+    .cw-spaces { display: flex; gap: 6px; padding: 10px 12px 8px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--line); }
+    .space { position: relative; flex: none; display: inline-flex; align-items: center; gap: 7px; padding: 4px 11px 4px 5px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); font-size: 12px; }
+    .space .av { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 7px; background: var(--c); color: #07101a; font-size: 11px; font-weight: 700; }
+    .space .av.group { background: linear-gradient(135deg, #a5f3fc, #818cf8); }
+    .space .av svg { width: 12px; height: 12px; }
+    .space.active { background: rgba(255, 255, 255, .11); color: #fff; border-color: var(--line-strong); }
+    .space .unread { position: absolute; top: -2px; right: -2px; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+    .cw-log { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; gap: 11px; padding: 14px 14px 8px; }
+    .cw-time, .cw-sys { align-self: center; font: 500 10px var(--mono); letter-spacing: .1em; color: var(--faint); }
+    .cw-sys { padding: 3px 12px; border-radius: 999px; border: 1px solid var(--line); }
+    .cmsg { display: flex; gap: 9px; max-width: 94%; }
+    .cmsg .av { flex: none; width: 24px; height: 24px; margin-top: 2px; display: grid; place-items: center; border-radius: 8px; background: var(--c); color: #07101a; font-size: 12px; font-weight: 700; }
+    .cmsg .who { margin-bottom: 3px; font-size: 11px; font-weight: 600; color: var(--c); }
+    .cmsg .who i { margin-left: 6px; font: 500 9.5px var(--mono); font-style: normal; letter-spacing: .08em; color: var(--faint); }
+    .cmsg .txt { padding: 8px 12px; border-radius: 4px 14px 14px 14px; font-size: 13px; line-height: 1.55; background: rgba(255, 255, 255, .06); border: 1px solid var(--line); }
+    .cmsg.me { align-self: flex-end; }
+    .cmsg.me .txt { border-radius: 14px 14px 4px 14px; background: rgba(103, 232, 249, .13); border-color: rgba(103, 232, 249, .28); }
+    .cmsg.typing .txt { display: flex; gap: 4px; padding: 12px 14px; }
+    .cmsg.typing .txt i { width: 5px; height: 5px; border-radius: 50%; background: var(--muted); animation: blink 1.2s infinite ease-in-out; }
+    .cmsg.typing .txt i:nth-child(2) { animation-delay: .15s; }
+    .cmsg.typing .txt i:nth-child(3) { animation-delay: .3s; }
+    @keyframes blink { 0%, 80%, 100% { opacity: .25; transform: none; } 40% { opacity: 1; transform: translateY(-2px); } }
+    .at { padding: 0 4px; border-radius: 4px; background: rgba(103, 232, 249, .12); color: #a5f3fc; }
+
+    .plan { align-self: stretch; margin-left: 33px; padding: 14px 14px 12px; border-radius: 14px; background: linear-gradient(180deg, rgba(103, 232, 249, .07), rgba(129, 140, 248, .05)); border: 1px solid rgba(103, 232, 249, .25); }
+    .plan > .eyebrow { display: block; margin-bottom: 6px; color: #a5f3fc; }
+    .plan p { margin: 0 0 10px; font-size: 12.5px; line-height: 1.6; color: #cdd3ea; }
+    .plan-item { display: flex; align-items: center; gap: 9px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 12.5px; }
+    .plan-item .dot { flex: none; }
+    .plan-item .nm { flex: none; width: 52px; color: var(--muted); font-size: 11.5px; }
+    .plan-item .tt { flex: 1; min-width: 0; line-height: 1.4; }
+    .plan-item .add { flex: none; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 8px; border: 1px solid var(--line-strong); background: rgba(255, 255, 255, .05); color: var(--ink); font-size: 14px; line-height: 1; }
+    .plan-item .added { flex: none; font: 600 10px var(--mono); letter-spacing: .08em; color: var(--ok); }
+    .plan-foot { display: flex; gap: 8px; margin-top: 10px; }
+    .plan-foot .primary { flex: 1; padding: 8px 12px; font-size: 12.5px; }
+    .plan-note { margin-top: 8px; font-size: 11px; color: var(--muted); }
+
+    .cw-status { display: flex; align-items: center; justify-content: space-between; min-height: 24px; padding: 0 16px; font-size: 11.5px; color: var(--muted); }
+    .cw-status .stop { padding: 1px 10px; border-radius: 999px; border: 1px solid var(--line-strong); background: transparent; color: var(--ink); font-size: 11px; }
+    .cw-sugg { display: flex; gap: 6px; padding: 2px 12px 8px; overflow-x: auto; scrollbar-width: none; }
+    .cw-sugg button { flex: none; padding: 3px 12px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); font-size: 11.5px; }
+    .cw-form { display: flex; align-items: center; gap: 8px; margin: 0 12px 12px; padding: 4px 4px 4px 14px; border-radius: 14px; background: rgba(255, 255, 255, .05); border: 1px solid var(--line); }
+    .cw-form.focus { border-color: rgba(103, 232, 249, .5); box-shadow: 0 0 0 4px rgba(103, 232, 249, .08); }
+    .cw-form input { flex: 1; min-width: 0; padding: 9px 0; border: 0; outline: 0; background: transparent; font-size: 13.5px; }
+    .cw-form input::placeholder { color: var(--faint); }
+    .cw-form .send { width: 34px; height: 34px; border-radius: 10px; }
+    .cw-resize { position: absolute; right: 4px; bottom: 4px; width: 12px; height: 12px; border-right: 2px solid var(--line-strong); border-bottom: 2px solid var(--line-strong); border-radius: 0 0 6px 0; cursor: nwse-resize; }
+
+    .pill { display: inline-flex; align-items: center; gap: 9px; padding: 9px 16px 9px 12px; border-radius: 999px; background: var(--glass-strong); border: 1px solid var(--line-strong); box-shadow: 0 14px 40px rgba(0, 0, 0, .5); font-size: 13px; position: relative; }
+    .pill svg { width: 16px; height: 16px; color: var(--accent); }
+    .pill .badge { margin-left: 2px; min-width: 18px; height: 18px; padding: 0 5px; display: inline-grid; place-items: center; border-radius: 9px; background: var(--danger); color: #fff; font: 600 10px var(--mono); }
+    .hud-chat { position: absolute; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--glass-strong); border: 1px solid var(--line-strong); color: #fff; }
+    .hud-chat svg { width: 16px; height: 16px; }
+    .hud-chat .badge { position: absolute; top: -4px; right: -4px; min-width: 16px; height: 16px; padding: 0 4px; display: grid; place-items: center; border-radius: 8px; background: var(--danger); color: #fff; font: 600 9.5px var(--mono); }
+    .box { padding: 24px; border-radius: 20px; border: 1px dashed var(--line-strong); display: grid; gap: 18px; justify-items: start; width: 440px; }
+    .box small { font: 600 10px var(--mono); letter-spacing: .12em; color: var(--faint); text-transform: uppercase; }
+    .box .desk { width: 170px; position: relative; }
+    .box kbd { margin-left: 4px; }
+    .keys { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <h1>聊天浮窗 · UI 设计稿</h1>
+  <p class="sub">聊天是一个<b>独立的浮窗</b>，不占员工面板。浮窗里有一个「办公室群聊」：你抛一个话题，员工像群里一样各自发言、互相接话，最后给出结论和可一键转成任务的建议。也可以和某个员工单聊。样式沿用现有的深色玻璃风格。</p>
+
+  <!-- ① 浮窗在场景里的样子 -->
+  <div class="row">
+    <figure>
+      <div class="stage"><div class="stage-inner">
+        <!-- 顶栏里新增的聊天按钮 -->
+        <div class="hud-chat hl" style="left:988px;top:17px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg><span class="badge">2</span></div>
+
+        <!-- 浮窗：默认在左侧，可拖动 / 缩放 / 最小化 -->
+        <div class="cw" style="position:absolute;left:22px;top:82px;height:640px">
+          <div class="cw-head">
+            <div class="cw-title"><b>办公室群聊</b><span>6 位员工在线</span></div>
+            <span class="grow"></span>
+            <button class="icon-btn small" type="button" title="最小化"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 12h12"/></svg></button>
+            <button class="icon-btn small" type="button" title="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+          </div>
+          <div class="cw-spaces">
+            <button class="space active" type="button"><span class="av group"><svg viewBox="0 0 24 24" fill="none" stroke="#07101a" stroke-width="2.2" stroke-linecap="round"><circle cx="9" cy="9" r="3.2"/><circle cx="17" cy="10" r="2.6"/><path d="M3.5 19c.6-3 3-4.6 5.5-4.6s4.9 1.6 5.5 4.6M15 15c2.4-.3 4.7 1 5.5 4"/></svg></span>群聊</button>
+            <button class="space" type="button" style="--c:#4c9a6a"><span class="av">规</span>规划师</button>
+            <button class="space" type="button" style="--c:#e8a33d"><span class="av">审</span>老审</button>
+            <button class="space" type="button" style="--c:#d45f8f"><span class="av">虫</span>虫探<i class="unread"></i></button>
+            <button class="space" type="button" style="--c:#4c8fd9"><span class="av">测</span>测试员</button>
+          </div>
+          <div class="cw-log">
+            <div class="cw-time">18:40</div>
+            <div class="cmsg me"><div><div class="txt">我要计划做一个游戏</div></div></div>
+            <div class="cw-sys">讨论开始 · 6 位员工参与</div>
+            <div class="cmsg" style="--c:#4c9a6a"><div class="av">规</div><div><div class="who">规划师</div><div class="txt">先把范围定清楚：类型、目标平台、第一个可玩版本要做到什么程度？我建议按 原型 → 垂直切片 → 发布 三个里程碑推进。</div></div></div>
+            <div class="cmsg" style="--c:#9b6bd6"><div class="av">笔</div><div><div class="who">笔杆</div><div class="txt"><span class="at">@规划师</span> 我来写游戏设计文档：核心玩法、关卡流程、美术风格。有了文档，后面所有人都有同一个参照。</div></div></div>
+            <div class="cmsg" style="--c:#e8a33d"><div class="av">审</div><div><div class="who">老审</div><div class="txt">技术上先定好代码规范和模块划分，别把渲染、逻辑、存档混在一起，后期重构会很痛。</div></div></div>
+            <div class="cmsg typing" style="--c:#4c8fd9"><div class="av">测</div><div><div class="who">测试员</div><div class="txt"><i></i><i></i><i></i></div></div></div>
+          </div>
+          <div class="cw-status"><span>运维哥、测试员 正在输入…</span><button class="stop" type="button">停止讨论</button></div>
+          <div class="cw-form focus"><input placeholder="发消息，或 @某人 单独问 TA…"><button class="send" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button></div>
+          <span class="cw-resize"></span>
+        </div>
+      </div></div>
+      <figcaption><b>① 浮窗在场景里的位置</b>
+        <ul><li>顶栏新增聊天按钮（带未读数）；快捷键 Ctrl+J</li><li>浮窗默认在左侧，<b style="display:inline;font:inherit;letter-spacing:0;text-transform:none;color:var(--ink)">可拖动、可缩放、可最小化</b>，位置和大小会记住</li><li>讨论进行时，窗口底部显示谁在输入，并有「停止讨论」</li><li>场景不被遮挡：3D 画面仍然可以拖动旋转</li></ul>
+      </figcaption>
+    </figure>
+
+    <!-- 入口与最小化 -->
+    <figure>
+      <div class="box">
+        <small>最小化后：右下角的小胶囊</small>
+        <div class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>办公室群聊<span class="badge">2</span></div>
+        <small>讨论时，3D 场景里发言的员工</small>
+        <div class="desk working" style="--c:#4c8fd9">
+          <div class="desk-head"><div class="avatar">测</div><div><div class="name">测试员</div></div><span class="chip" style="color:var(--accent)">发言中</span></div>
+          <div class="bubble" style="display:block">…每个里程碑都要有可验收的标准</div>
+        </div>
+        <small>打开聊天的方式</small>
+        <div class="keys"><span>顶栏聊天按钮</span><span>·</span><span>Ctrl<kbd>J</kbd></span><span>·</span><span>员工面板「和 TA 聊天」</span><span>·</span><span>Ctrl+K 搜索</span></div>
+      </div>
+      <figcaption><b>入口与细节</b>
+        <ul><li>讨论时发言的员工，3D 标签显示「发言中」，共享大脑同步脉冲</li><li>员工面板里加一个「和 TA 聊天」按钮，直接打开这位员工的单聊</li><li>最小化时变成小胶囊，有新消息显示红色数字</li></ul>
+      </figcaption>
+    </figure>
+  </div>
+
+  <!-- ② 讨论结论 + 转成任务 ；③ @ 点名与单聊 -->
+  <div class="row">
+    <figure>
+      <div class="cw" style="height:700px">
+        <div class="cw-head">
+          <div class="cw-title"><b>办公室群聊</b><span>讨论已结束</span></div><span class="grow"></span>
+          <button class="icon-btn small" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 12h12"/></svg></button>
+          <button class="icon-btn small" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        </div>
+        <div class="cw-spaces">
+          <button class="space active" type="button"><span class="av group"><svg viewBox="0 0 24 24" fill="none" stroke="#07101a" stroke-width="2.2" stroke-linecap="round"><circle cx="9" cy="9" r="3.2"/><circle cx="17" cy="10" r="2.6"/><path d="M3.5 19c.6-3 3-4.6 5.5-4.6s4.9 1.6 5.5 4.6M15 15c2.4-.3 4.7 1 5.5 4"/></svg></span>群聊</button>
+          <button class="space" type="button" style="--c:#4c9a6a"><span class="av">规</span>规划师</button>
+          <button class="space" type="button" style="--c:#e8a33d"><span class="av">审</span>老审</button>
+          <button class="space" type="button" style="--c:#d45f8f"><span class="av">虫</span>虫探</button>
+          <button class="space" type="button" style="--c:#4c8fd9"><span class="av">测</span>测试员</button>
+        </div>
+        <div class="cw-log">
+          <div class="cmsg" style="--c:#4c8fd9"><div class="av">测</div><div><div class="who">测试员</div><div class="txt">我建议每个里程碑都有可验收的标准，比如帧率、加载时间、关键流程能通关。越早定越好。</div></div></div>
+          <div class="cmsg" style="--c:#d9822b"><div class="av">运</div><div><div class="who">运维哥</div><div class="txt">构建和发布流水线我来搭：自动打包、版本号、多平台导出。<span class="at">@测试员</span> 打包产物我会自动提供给你测。</div></div></div>
+          <div class="cmsg" style="--c:#d45f8f"><div class="av">虫</div><div><div class="who">虫探</div><div class="txt">还要提前接入崩溃日志和调试面板，玩家一卡死我们才知道原因。</div></div></div>
+          <div class="cmsg" style="--c:#4c9a6a"><div class="av">规</div><div><div class="who">规划师<i>总结</i></div><div class="txt">结论：先花 1 周做原型，验证核心玩法好不好玩。下面是我整理的任务建议。</div></div></div>
+          <div class="plan">
+            <span class="eyebrow">讨论结论 · 建议任务</span>
+            <div class="plan-item"><i class="dot" style="--c:#4c9a6a"></i><span class="nm">规划师</span><span class="tt">拆解游戏项目的范围和里程碑</span><span class="added">已加入</span></div>
+            <div class="plan-item"><i class="dot" style="--c:#9b6bd6"></i><span class="nm">笔杆</span><span class="tt">撰写游戏设计文档（核心玩法、关卡、美术风格）</span><button class="add" type="button">+</button></div>
+            <div class="plan-item"><i class="dot" style="--c:#e8a33d"></i><span class="nm">老审</span><span class="tt">确定代码规范与模块划分</span><button class="add" type="button">+</button></div>
+            <div class="plan-item"><i class="dot" style="--c:#4c8fd9"></i><span class="nm">测试员</span><span class="tt">制定各里程碑的验收标准</span><button class="add" type="button">+</button></div>
+            <div class="plan-item"><i class="dot" style="--c:#d9822b"></i><span class="nm">运维哥</span><span class="tt">搭建自动构建与发布流水线</span><button class="add" type="button">+</button></div>
+            <div class="plan-item"><i class="dot" style="--c:#d45f8f"></i><span class="nm">虫探</span><span class="tt">接入崩溃日志与调试面板</span><button class="add" type="button">+</button></div>
+            <div class="plan-foot"><button class="primary" type="button">全部转为任务（5）</button><button class="ghost small" type="button">继续讨论</button></div>
+            <div class="plan-note">当前是「手动」模式：转成任务后需要你逐个批准。</div>
+          </div>
+        </div>
+        <div class="cw-sugg"><button type="button">我要计划做一个游戏</button><button type="button">怎么把项目上线？</button><button type="button">这个功能怎么测？</button></div>
+        <div class="cw-form"><input placeholder="发消息，或 @某人 单独问 TA…"><button class="send" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button></div>
+      </div>
+      <figcaption><b>② 讨论结论 → 一键转成任务</b>
+        <ul><li>讨论结束时，规划师做总结，给出每位员工的建议任务</li><li>每条可以单独「+」加入，或「全部转为任务」；遵守权限模式（手动 / 自动 / 完全访问）</li><li>已加入的显示「已加入」；也可以「继续讨论」追问</li></ul>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <div class="cw" style="height:700px">
+        <div class="cw-head">
+          <div class="cw-title"><b>办公室群聊</b><span>6 位员工在线</span></div><span class="grow"></span>
+          <button class="icon-btn small" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 12h12"/></svg></button>
+          <button class="icon-btn small" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        </div>
+        <div class="cw-spaces">
+          <button class="space active" type="button"><span class="av group"><svg viewBox="0 0 24 24" fill="none" stroke="#07101a" stroke-width="2.2" stroke-linecap="round"><circle cx="9" cy="9" r="3.2"/><circle cx="17" cy="10" r="2.6"/><path d="M3.5 19c.6-3 3-4.6 5.5-4.6s4.9 1.6 5.5 4.6M15 15c2.4-.3 4.7 1 5.5 4"/></svg></span>群聊</button>
+          <button class="space" type="button" style="--c:#4c9a6a"><span class="av">规</span>规划师</button>
+          <button class="space" type="button" style="--c:#e8a33d"><span class="av">审</span>老审</button>
+          <button class="space" type="button" style="--c:#d45f8f"><span class="av">虫</span>虫探<i class="unread"></i></button>
+          <button class="space" type="button" style="--c:#4c8fd9"><span class="av">测</span>测试员</button>
+        </div>
+        <div class="cw-log">
+          <div class="cmsg me"><div><div class="txt"><span class="at">@测试员</span> 这个游戏怎么测？</div></div></div>
+          <div class="cw-sys">只有 测试员 会回答</div>
+          <div class="cmsg" style="--c:#4c8fd9"><div class="av">测</div><div><div class="who">测试员</div><div class="txt">分三层：核心逻辑用单元测试；关卡流程用自动化脚本跑通；手感和平衡性靠人工试玩。每个里程碑我出一份验收清单。</div></div></div>
+          <div class="cmsg" style="--c:#d45f8f"><div class="av">虫</div><div><div class="who">虫探<i>补充</i></div><div class="txt"><span class="at">@测试员</span> 记得让自动化测试在失败时带上日志，我排查会快很多。</div></div></div>
+          <div class="cw-time">18:52</div>
+          <div class="cmsg me"><div><div class="txt">老审，这个模块划分合理吗？</div></div></div>
+          <div class="cmsg" style="--c:#e8a33d"><div class="av">审</div><div><div class="who">老审</div><div class="txt">点名的话我会单独回答。把代码或结构图发我，我告诉你哪些必须改、哪些可以以后再说。</div></div></div>
+        </div>
+        <div class="cw-status"><span></span></div>
+        <div class="cw-form"><input placeholder="发消息，或 @某人 单独问 TA…"><button class="send" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button></div>
+      </div>
+      <figcaption><b>③ @ 点名与单聊</b>
+        <ul><li>输入 @ 会弹出员工列表，点名后只有 TA 回答；别人可以补充一句</li><li>顶部的头像可以切到某个员工的<b style="display:inline;font:inherit;letter-spacing:0;text-transform:none;color:var(--ink)">单聊</b>，每人一份独立记录</li><li>红点表示该员工有未读消息；任务做完，员工会在自己的聊天里主动通知你</li><li>群聊里 @ 到最合适的人，或不 @ 让全员讨论</li></ul>
+      </figcaption>
+    </figure>
+  </div>
+</body>
+</html>

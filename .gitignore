@@ -1,0 +1,6 @@
+node_modules/
+dist/
+# 本地密钥，绝不能提交
+.env
+.env.*
+secrets.local.json
