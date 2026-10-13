@@ -567,3 +567,9 @@ select option { background: #12172b; color: var(--ink); }
 .td-step[data-type="search"]::before { background: var(--accent); }
 .td-step[data-type="remember"]::before { background: #c084fc; box-shadow: 0 0 8px #c084fc; }
 #view-brain .td-block { margin: 0 0 18px; }
+
+/* 群聊讨论的状态行与详情页操作 */
+.talk-status { display: flex; align-items: center; gap: 10px; }
+.talk-status .stop { padding: 1px 10px; border-radius: 999px; border: 1px solid var(--line-strong); background: transparent; color: var(--ink); font-size: 11px; }
+.plan-item .added { flex: none; font: 600 10px var(--mono); letter-spacing: .08em; color: var(--ok); }
+.td-actions { display: flex; gap: 8px; margin-top: 8px; }

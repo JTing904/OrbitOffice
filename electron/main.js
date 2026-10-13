@@ -5,7 +5,7 @@
 const { app, BrowserWindow, ipcMain, dialog, Notification, shell, safeStorage } = require("electron");
 const path = require("path");
 const fs = require("fs");
-const { runAgent, readFile, resolveInside, readNotes, strength } = require("./agent");
+const { runAgent, discuss, readFile, resolveInside, readNotes, strength } = require("./agent");
 
 const CONFIG_FILE = () => path.join(app.getPath("userData"), "config.json");
 let win = null;
@@ -284,7 +284,8 @@ async function altModels(source) {
 }
 
 // ---- 员工真干活 ----
-const pendingAsks = new Map();   // 等用户批准的操作：id -> resolve
+const pendingAsks = new Map();   // 等用户批准的操作：id -> { resolve, taskId }
+const cancelledRuns = new Set();   // 被用户取消的任务 id
 let askSeq = 0;
 
 ipcMain.handle("agent:available", () => ({
@@ -306,6 +307,7 @@ ipcMain.handle("agent:run", async (e, req) => {
     }, {
       sources: () => config.sources || [],
       alts: altModels,
+      cancelled: () => cancelledRuns.has(req.taskId),
       call: (source, pathname, body) => callSource(source, pathname, body, 90000),
       // 用不了的型号记在设置里，重启 App 后仍然有效
       coolUntil: key => (config.cool && config.cool[key]) || 0,
@@ -318,7 +320,7 @@ ipcMain.handle("agent:run", async (e, req) => {
       emit: send,
       ask: question => new Promise(resolve => {
         const id = ++askSeq;
-        pendingAsks.set(id, resolve);
+        pendingAsks.set(id, { resolve, taskId: req.taskId });
         send(Object.assign({ type: "ask", askId: id }, question));
       }),
     });
@@ -327,8 +329,34 @@ ipcMain.handle("agent:run", async (e, req) => {
   }
 });
 ipcMain.on("agent:answer", (_e, id, allow) => {
-  const resolve = pendingAsks.get(id);
-  if (resolve) { pendingAsks.delete(id); resolve(typeof allow === "string" ? allow.slice(0, 2000) : !!allow); }
+  const p = pendingAsks.get(id);
+  if (p) { pendingAsks.delete(id); p.resolve(typeof allow === "string" ? allow.slice(0, 2000) : !!allow); }
+});
+
+// 取消正在执行的任务：下一步开始前停下；如果正在等用户回答，按"不同意"处理
+ipcMain.on("agent:cancel", (_e, taskId) => {
+  cancelledRuns.add(taskId);
+  for (const [id, p] of pendingAsks) if (p.taskId === taskId) { pendingAsks.delete(id); p.resolve(false); }
+});
+// 群聊讨论里的一次发言 / 结论
+let talkCancelled = false;
+ipcMain.on("agent:talkStop", () => { talkCancelled = true; });
+ipcMain.handle("agent:say", async (_e, req) => {
+  req = req || {};
+  if (req.first) talkCancelled = false;
+  try {
+    return await discuss({
+      mode: req.mode === "plan" ? "plan" : "turn", agentName: String(req.agentName || "").slice(0, 60), agentRole: String(req.agentRole || "").slice(0, 80),
+      brief: String(req.brief || "").slice(0, 600), topic: String(req.topic || "").slice(0, 1000), transcript: String(req.transcript || "").slice(0, 8000),
+      team: String(req.team || "").slice(0, 800), lang: req.lang, commands: !!config.caps.commands,
+    }, {
+      sources: () => config.sources || [], alts: altModels,
+      call: (source, pathname, body) => callSource(source, pathname, body, 60000),
+      coolUntil: key => (config.cool && config.cool[key]) || 0,
+      cool: (key, until) => { config.cool = config.cool || {}; config.cool[key] = until; saveConfig(); },
+      cancelled: () => talkCancelled,
+    });
+  } catch (err) { return { ok: false, error: "crash", detail: String(err.message || err) }; }
 });
 
 // 只允许一个实例

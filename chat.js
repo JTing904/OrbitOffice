@@ -85,6 +85,84 @@ const ChatUI = (() => {
     saveDm(); badge(); render();
   }
   const busy = {};   // agentId -> 正在处理聊天消息
+  let talk = null;   // 正在进行的群聊讨论：{ stop, typing }
+
+  const pushGroup = entry => { (dm.group || (dm.group = [])).push(Object.assign({ at: Date.now() }, entry)); saveDm(); render(); };
+  // 群聊讨论：几位员工依次发言（各自从岗位角度说，能看到前面的人说了什么），最后规划师给出结论和建议任务
+  async function discuss(topic) {
+    if (!(window.desktop && desktop.agent && desktop.agent.say)) return false;
+    const state = talk = { stop: false, typing: null };
+    const order = [];
+    for (const id of ["planner", pickAgent(topic), "designer", "developer", "tester", "reviewer", "devops", "writer", "debugger"]) {
+      const a = agentById(id);
+      if (a && !order.includes(a)) order.push(a);
+    }
+    const speakers = order.slice(0, 5);
+    const transcript = () => (dm.group || []).filter(m => m.text).slice(-14).map(m => (m.me ? "User" : agentName(agentById(m.a))) + ": " + m.text).join("\n");
+    pushGroup({ sys: t("chat.started", { n: speakers.length }) });
+    let failed = null;
+    for (const [i, a] of speakers.entries()) {
+      if (state.stop) break;
+      state.typing = a.id; render();
+      const r = await desktop.agent.say({ mode: "turn", first: i === 0, agentName: agentName(a), agentRole: agentRole(a), brief: a.brief, topic, transcript: transcript(), lang: LANG });
+      if (state.stop) break;
+      if (r.ok && r.text) pushGroup({ a: a.id, text: r.text });
+      else { failed = r; break; }
+    }
+    if (!state.stop && !failed) {
+      const p = agentById("planner");
+      state.typing = p.id; render();
+      const r = await desktop.agent.say({ mode: "plan", agentName: agentName(p), agentRole: agentRole(p), topic, transcript: transcript(),
+        team: AGENTS.map(x => x.id + ": " + x.en.role).join("; "), lang: LANG });
+      if (r.ok && !state.stop) {
+        pushGroup({ a: p.id, text: r.summary, tag: "chat.tag.summary" });
+        const tasks = (r.tasks || []).filter(x => agentById(x.to));
+        if (tasks.length) pushGroup({ plan: tasks, added: [] });
+      } else if (!r.ok) failed = r;
+    }
+    if (state.stop) pushGroup({ sys: t("chat.talk.stopped") });
+    else if (failed) pushGroup({ sys: t("chat.talk.failed", { error: failed.detail || failed.error || "" }) });
+    talk = null;
+    render();
+    return true;
+  }
+  function stopTalk() { if (talk) { talk.stop = true; if (window.desktop && desktop.agent) desktop.agent.talkStop(); } }
+
+  // 讨论结论卡片：每条建议可以单独加入任务，或全部加入（遵守权限模式）
+  function realPlanCard(entry) {
+    const card = el("div", "plan");
+    card.append(el("span", "eyebrow", t("chat.plan.title")));
+    // after：排在哪个任务后面（「全部转为任务」时按顺序一个接一个做）
+    const add = (i, after) => {
+      if (entry.added.includes(i)) return null;
+      const task = addTask(entry.plan[i].task, entry.plan[i].to, false);
+      if (task && after) task.after = after.id;
+      entry.added.push(i);
+      saveDm();
+      return task;
+    };
+    entry.plan.forEach((item, i) => {
+      const a = agentById(item.to);
+      const row = el("div", "plan-item");
+      const dot = el("i", "dot");
+      dot.style.setProperty("--c", agentColor(a));
+      row.append(dot, el("span", "nm", agentName(a)), el("span", "tt", item.task));
+      if (entry.added.includes(i)) row.append(el("span", "added", t("chat.plan.added")));
+      else { const b = el("button", "add", "+"); b.type = "button"; b.addEventListener("click", () => { add(i); render(); }); row.append(b); }
+      card.append(row);
+    });
+    const left = entry.plan.length - entry.added.length;
+    if (left) {
+      const foot = el("div", "plan-foot");
+      const all = el("button", "primary", t("chat.plan.all", { n: left }));
+      all.type = "button";
+      all.addEventListener("click", () => { let prev = null; entry.plan.forEach((_, i) => { prev = add(i, prev) || prev; }); save(); render(); });
+      foot.append(all);
+      card.append(foot);
+    }
+    card.append(el("div", "plan-note", t("chat.plan.seq")));
+    return card;
+  }
   // 群聊里这句话该谁来接：被 @ 的人，否则按内容挑最对口的
   function addressee(text) {
     const at = AGENTS.find(a => text.includes("@" + agentName(a)));
@@ -248,7 +326,19 @@ const ChatUI = (() => {
       // 群聊里有真实消息了：显示真实记录，不再显示示例
       log.replaceChildren();
       if (unread.group) { unread.group = 0; saveDm(); badge(); }
-      for (const m of dm.group) log.append(m.me ? myMsg(m.text) : agentMsg(agentById(m.a) || AGENTS[0], m.text));
+      for (const m of dm.group) {
+        if (m.sys) log.append(el("div", "cw-sys", m.sys));
+        else if (m.plan) log.append(realPlanCard(m));
+        else log.append(m.me ? myMsg(m.text) : agentMsg(agentById(m.a) || AGENTS[0], m.text, m.tag));
+      }
+      if (talk) {
+        const note = el("div", "cw-sys demo talk-status", talk.typing ? t("chat.talk.typing", { name: agentName(agentById(talk.typing)) }) : "");
+        const stop = el("button", "stop", t("chat.talk.stop"));
+        stop.type = "button";
+        stop.addEventListener("click", stopTalk);
+        note.append(stop);
+        log.append(note);
+      }
       for (const id in busy) if (busy[id] === "group") log.append(el("div", "cw-sys demo", t("chat.working", { name: agentName(agentById(id)) })));
     } else if (!isGroup) {
       const list = dm[space] || [];
@@ -341,8 +431,14 @@ const ChatUI = (() => {
         const resolve = waiting[space]; delete waiting[space]; resolve(text);
       } else {
         // 直接对话：交给这位员工（群聊里交给被 @ 的人或最对口的人），回复会出现在这里
-        const who = space === "group" ? addressee(text) : space;
-        if (chatToAgent(who, text, history, space === "group")) busy[who] = space === "group" ? "group" : "dm";
+        const mentioned = space === "group" && AGENTS.some(a => text.includes("@" + agentName(a)));
+        if (space === "group" && !mentioned) {
+          // 群里没点名：大家一起讨论，最后给出结论
+          if (!talk) discuss(text).then(ok => { if (!ok) { pushGroup({ sys: t("chat.dm.noted") }); } });
+        } else {
+          const who = space === "group" ? addressee(text) : space;
+          if (chatToAgent(who, text, history, space === "group")) busy[who] = space === "group" ? "group" : "dm";
+        }
       }
       render();
     });

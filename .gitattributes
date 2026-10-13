@@ -1,0 +1,3 @@
+# 统一用 LF 换行，避免 Windows 上检出后变成 CRLF
+* text=auto eol=lf
+*.glb binary

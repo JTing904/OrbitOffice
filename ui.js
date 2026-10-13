@@ -328,6 +328,10 @@ const UI = (() => {
     meta.append(who, st);
     if (task.source) meta.append(el("span", "td-ai", t("td.ai") + "：" + task.source));
     head.append(meta);
+    const acts = el("div", "td-actions");
+    if (task.status !== "done") acts.append(button("ghost small danger", t("td.cancel"), () => cancelTask(task.id)));
+    else if (task.failed) acts.append(button("ghost small", t("td.retry"), () => { const n = retryTask(task.id); if (n) openTask(n.id); }));
+    if (acts.childNodes.length) head.append(acts);
     v.append(head);
 
     const block = (titleKey, node) => { const b = el("section", "td-block"); b.append(el("span", "eyebrow", t(titleKey)), node); v.append(b); };

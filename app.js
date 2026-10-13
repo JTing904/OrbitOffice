@@ -350,6 +350,31 @@ function resetAgentEdit(id) {
   render(true);
 }
 
+// 取消任务：正在执行的会在下一步之前停下；还没开始的直接标记为已取消
+function cancelTask(id) {
+  const task = tasks.find(x => x.id === id);
+  if (!task || task.status === "done") return;
+  if (task.status === "doing" && task.real && DESKTOP) { task.stepText = t("real.cancelling"); desktop.agent.cancel(id); render(true); return; }
+  task.status = "done"; task.doneAt = Date.now(); task.failed = true; task.cancelled = true; task.progress = 1;
+  task.result = t("real.failed", { error: t("real.e.cancelled") });
+  addLog("log.cancelled", { task: snap(task) });
+  save();
+  render(true);
+}
+// 重试：照原样再派一次（同一位员工、同样的交接内容）
+function retryTask(id) {
+  const old = tasks.find(x => x.id === id);
+  if (!old) return null;
+  const task = createTask(old.title, old.agentId, { handoff: old.handoff, from: old.from, parent: old.parent, tpl: old.tpl, topic: old.topic });
+  task.context = old.context || "";
+  task.chat = old.chat; task.history = old.history; task.depth = old.depth;
+  task.status = "queued"; task.reason = "";
+  tasks.push(task);
+  addLog("log.retry", { task: snap(task), a: task.agentId });
+  save();
+  render(true);
+  return task;
+}
 function clearData() {
   tasks = []; logs = []; nextId = 1;
   addLog("log.cleared");
@@ -387,6 +412,7 @@ function startReal(task, a) {
     task.doneAt = Date.now();
     task.progress = 1;
     task.failed = !res.ok || !!res.blocked;
+    task.cancelled = res.error === "cancelled";
     task.blocked = false;
     task.files = res.files || [];
     task.source = res.source || null;
@@ -405,6 +431,8 @@ function startReal(task, a) {
       // 没有实际产出就不往下传：免得后面的人对着空气干活
       if (res.handoff && !task.files.length && res.handoff.to !== task.from) task.result += "\n\n" + t("real.noOutputNoHandoff");
       else proposeHandoff(task, a, res.handoff);   // 员工认为需要别人接着做时才交接
+    } else if (task.cancelled) {
+      addLog("log.cancelled", { task: snap(task) });
     } else {
       addLog("log.realFailed", { a: a.id, task: snap(task), error: realError(res) });
       UI.toast(t("real.failed", { error: realError(res) }), { kind: "warn", ttl: 9000 });
@@ -487,6 +515,21 @@ function chatToAgent(agentId, text, history, inGroup) {
   return true;
 }
 
+// 有先后顺序的任务（例如讨论结论里的一串任务）：前一个做完才轮到它
+function readyToStart(x) {
+  if (!x.after) return true;
+  const prev = tasks.find(y => y.id === x.after);
+  if (!prev) return true;
+  if (prev.status !== "done") return false;
+  if (prev.failed) {
+    x.status = "done"; x.doneAt = Date.now(); x.failed = true; x.cancelled = true; x.progress = 1;
+    x.result = t("real.failed", { error: t("real.e.prevFailed", { title: taskTitle(prev) }) });
+    return false;
+  }
+  if (!x.context) x.context = (agentName(agentById(prev.agentId)) + " (" + agentRole(agentById(prev.agentId)) + "): " + (prev.result || "")).slice(0, 3000);
+  return true;
+}
+
 // ---- 模拟工作循环 ----
 let last = performance.now();
 const atDesk = id => !(window.Office3D && Office3D.ready) || Office3D.isAtDesk(id);
@@ -499,7 +542,7 @@ function tick(now) {
   for (const a of AGENTS) {
     let cur = tasks.find(x => x.agentId === a.id && x.status === "doing");
     if (!cur) {
-      cur = tasks.find(x => x.agentId === a.id && x.status === "queued");
+      cur = tasks.find(x => x.agentId === a.id && x.status === "queued" && readyToStart(x));
       if (cur) {
         cur.status = "doing";
         addLog("log.start", { a: a.id, task: snap(cur) });

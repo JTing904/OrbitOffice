@@ -305,6 +305,7 @@ async function runAgent(req, deps) {
   const scopeMessage = rel => "Not allowed: changing " + rel + " is outside your job. In your role you may only write " + req.scope.hint + ". Do not try another path for the same content. Finish your own part, then hand off to the teammate whose job this is (for code: developer).";
 
   for (let step = 1; step <= MAX_STEPS; step++) {
+    if (deps.cancelled && deps.cancelled()) return { ok: false, error: "cancelled", files };
     deps.emit({ type: "thinking", step, max: MAX_STEPS, source: label(pool[sourceIndex]) });
     trimContext(messages);
 
@@ -364,6 +365,7 @@ async function runAgent(req, deps) {
     }
 
     for (const call of calls) {
+      if (deps.cancelled && deps.cancelled()) return { ok: false, error: "cancelled", files };
       const name = call.function && call.function.name;
       let args = {};
       try { args = JSON.parse((call.function && call.function.arguments) || "{}"); } catch (_) { /* 参数不是合法 JSON */ }
@@ -433,4 +435,74 @@ async function runAgent(req, deps) {
   return { ok: false, error: "too-many-steps", files };
 }
 
-module.exports = { runAgent, readFile, resolveInside, readNotes, NOTES_FILE, strength };
+// ---- 群聊讨论：一位员工发一次言（不用工具，只说话），或由规划师给出结论和建议任务 ----
+const PLAN_TOOL = fn("propose_plan", "Give the conclusion of the discussion and the concrete tasks the team should do next.", {
+  summary: str("The conclusion in 1-3 sentences"),
+  tasks: { type: "array", description: "One task per teammate who has real work to do. Leave out teammates with nothing to do.", items: { type: "object",
+    properties: { to: str("Teammate id"), task: str("The concrete task, one sentence") }, required: ["to", "task"] } },
+}, ["summary", "tasks"]);
+
+async function discuss(req, deps) {
+  const all = [];
+  const enabled = deps.sources().filter(x => x.enabled && x.model);
+  for (const [order, s] of enabled.entries()) {
+    const alts = deps.alts ? await deps.alts(s) : [];
+    for (const m of [s.model].concat(alts)) all.push(Object.assign({}, s, { model: m, coolKey: s.id + "|" + m, order }));
+  }
+  if (!all.length) return { ok: false, error: "no-ai" };
+  all.sort((a, b) => strength(b.model) - strength(a.model) || a.order - b.order);
+  const now = Date.now();
+  const ready = all.filter(s => (deps.coolUntil ? deps.coolUntil(s.coolKey) : 0) <= now);
+  const pool = ready.length ? ready : all;
+
+  const lang = req.lang === "zh" ? "Simplified Chinese" : "English";
+  const plan = req.mode === "plan";
+  const CAN_DO = "Important fact about this team: it works only by reading and writing text files in a project folder" + (req.commands ? " and running command-line tools" : "") +
+    ". Nobody can use graphical editors such as Unity, Godot's editor, Unreal or Blender's interface. So only suggest technologies that work from plain files, for example a browser game in HTML/CSS/JavaScript.";
+  const system = plan
+    ? "You are " + req.agentName + ", the " + req.agentRole + ". The team just discussed the user's topic in a group chat. Wrap it up: give the conclusion and the concrete next tasks, using the propose_plan tool. " +
+      CAN_DO + " Only include tasks that are really needed and that this team can actually do. Keep the first version small enough to build right away. Order the tasks in the sequence they must happen (plan, design, code, test, review). Teammates (id: role): " + req.team + ". Write in " + lang + "."
+    : "You are " + req.agentName + ", the " + req.agentRole + ", in your team's group chat. " + (req.brief ? "Your job: " + req.brief + " " : "") +
+      CAN_DO + " The user raised a topic and the team is discussing it. Say what matters from YOUR role's point of view: a concrete suggestion, a risk, or a question that must be settled. " +
+      "React to what teammates already said — agree, disagree or build on it, and you may address someone as @name. Do not repeat points already made. " +
+      "Be specific to this topic, not generic. 1 to 3 short sentences, plain chat tone, no lists, no headings. Write in " + lang + ".";
+  const body = {
+    messages: [{ role: "system", content: system }, { role: "user", content: "Topic from the user: " + req.topic + "\n\nConversation so far:\n" + (req.transcript || "(nobody has spoken yet)") + (plan ? "" : "\n\nYour turn, " + req.agentName + ":") }],
+    temperature: plan ? 0.2 : 0.7, max_tokens: plan ? 2000 : 900,
+  };
+  if (plan) { body.tools = [PLAN_TOOL]; body.tool_choice = { type: "function", function: { name: "propose_plan" } }; }
+
+  let last = "unknown";
+  for (const src of pool) {
+    if (deps.cancelled && deps.cancelled()) return { ok: false, error: "cancelled" };
+    const r = await deps.call(src, "/chat/completions", Object.assign({ model: src.model }, body));
+    const msg = r.ok && r.data && r.data.choices && r.data.choices[0] && r.data.choices[0].message;
+    if (msg) {
+      const source = src.name + " · " + String(src.model).split("/").pop();
+      if (plan) {
+        const call = (msg.tool_calls || [])[0];
+        try {
+          const a = JSON.parse((call && call.function.arguments) || "null");
+          if (a && a.summary) return { ok: true, source, summary: String(a.summary).slice(0, 800), tasks: (Array.isArray(a.tasks) ? a.tasks : []).filter(x => x && x.to && x.task).slice(0, 8).map(x => ({ to: String(x.to).toLowerCase(), task: String(x.task).slice(0, 300) })) };
+        } catch (_) { /* 参数不是合法 JSON */ }
+        if (msg.content) return { ok: true, source, summary: String(msg.content).trim().slice(0, 800), tasks: [] };
+      } else if (msg.content && String(msg.content).trim()) {
+        let text = String(msg.content).trim().replace(/^[^:：]{1,12}[:：]\s*/, "").slice(0, 700);
+        const end = Math.max(text.lastIndexOf("。"), text.lastIndexOf("！"), text.lastIndexOf("？"), text.lastIndexOf(". "), text.lastIndexOf("!"), text.lastIndexOf("?"));
+        if (!/[。！？.!?）)”"]$/.test(text) && end > 40) text = text.slice(0, end + 1);
+        return { ok: true, source, text };
+      }
+      last = "empty reply";
+    } else {
+      last = (r.status ? r.status + " " : "") + (r.error || "bad response");
+      if (deps.cool) {
+        if (r.status === 404 || r.status === 401 || r.status === 403) deps.cool(src.coolKey, Date.now() + 24 * 3600000);
+        else if (r.status === 429) deps.cool(src.coolKey, Date.now() + (/rate limit|per minute|try again in|too many requests/i.test(r.error || "") ? 60000 : 3600000));
+        else if (r.error === "timeout") deps.cool(src.coolKey, Date.now() + 30 * 60000);
+      }
+    }
+  }
+  return { ok: false, error: "all-sources-failed", detail: last };
+}
+
+module.exports = { discuss, runAgent, readFile, resolveInside, readNotes, NOTES_FILE, strength };

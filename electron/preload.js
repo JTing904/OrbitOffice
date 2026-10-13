@@ -23,6 +23,9 @@ contextBridge.exposeInMainWorld("desktop", {
     available: () => ipcRenderer.invoke("agent:available"),
     run: req => ipcRenderer.invoke("agent:run", req),
     answer: (askId, allow) => ipcRenderer.send("agent:answer", askId, allow),
+    cancel: taskId => ipcRenderer.send("agent:cancel", taskId),
+    say: req => ipcRenderer.invoke("agent:say", req),
+    talkStop: () => ipcRenderer.send("agent:talkStop"),
     onEvent: cb => ipcRenderer.on("agent:event", (_e, payload) => cb(payload)),
   },
   // AI 池：多个来源。Key 只能写入，读不回来。
