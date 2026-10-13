@@ -4,3 +4,6 @@ dist/
 .env
 .env.*
 secrets.local.json
+
+# OrbitOffice 员工在项目里留下的记忆和笔记（每台电脑自己的，不进仓库）
+.myaioffice/
