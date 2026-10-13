@@ -368,6 +368,7 @@ async function runAgent(req, deps) {
   const files = [];
   const tools = TOOLS.concat(ASK_TOOL, req.skillCatalog && deps.skill ? [SKILL_TOOL] : [], req.caps && req.caps.commands ? [RUN_TOOL] : [], ext.map(x => x.def));
   let externalSkill = false;   // 读过从外部导入的技能：之后运行命令、使用连接器都先问用户
+  const seen = new Set(), overwriteWarned = new Set();   // 这次读过的文件；已经提醒过「会覆盖」的文件
   let sourceIndex = 0, lastError = "unknown", fakeCalls = 0, nudges = 0, commands = 0, questions = 0, looked = 0, honesty = 0;
 
   const conclude = async res => {
@@ -487,10 +488,17 @@ async function runAgent(req, deps) {
         } else if (name === "read_file") {
           deps.emit({ type: "read", path: args.path });
           result = readFile(root, args.path);
+          seen.add(relOf(root, args.path));
           looked++;
         } else if (name === "write_file" || name === "edit_file") {
           const rel = relOf(root, args.path);   // 先检查路径和岗位范围，再问用户
           if (outOfScope(rel)) { deps.emit({ type: "denied", path: rel }); result = scopeMessage(rel); }
+          // 要整个覆盖一个已经存在、这次又没读过的文件：先拦一次（多半是撞名，例如同一天的两份纪要），让它先读或换名
+          else if (name === "write_file" && !seen.has(rel) && !files.includes(rel) && !overwriteWarned.has(rel) && fs.existsSync(resolveInside(root, rel))) {
+            overwriteWarned.add(rel);
+            result = "Not written: " + rel + " already exists and you have not read it in this task, so writing would replace someone's earlier work. " +
+              "If this is a different piece of work, choose a new file name (for example add a number or the topic). If you really mean to replace it, read it first, then write again.";
+          }
           else if (req.mode === "manual" && !(await deps.ask({ kind: "write", path: rel, size: String(args.content || args.new_text || "").length }))) {
             deps.emit({ type: "denied", path: rel });
             result = "The user declined this change. Do not retry the same change; adjust or finish.";
@@ -639,12 +647,17 @@ async function compose(req, deps) {
   const { all, pool } = await buildPool(deps, "strong");
   if (!all.length) return { ok: false, error: "no-ai" };
   const lang = req.lang === "zh" ? "Simplified Chinese" : "English";
-  const office = req.kind === "office", skill = req.kind === "skill";
+  const office = req.kind === "office", learn = req.kind === "learn", skill = req.kind === "skill" || learn;
   const facts = "Facts about how these AI teammates work: each one is an AI model that can only read and write text files (Markdown, code, data) in the user's working folder, ask the user questions, " +
     "hand work to a teammate, and — only if the user allows it — run command-line tools or use connectors the user added (for example reading web pages). They cannot click through apps or websites, post to social media, send email, or make images or video. " +
     "So every deliverable must be a text file, for example drafts/2026-10-post.md. Write the instructions so the teammate produces real, finished, usable work, not advice about the work.";
   const dateNote = " Today is " + today() + ".";
-  const system = skill
+  const system = learn
+    ? "You turn a piece of work an AI teammate finished well into a reusable skill for the team, using the define_skill tool. The user gives you the task, the steps taken and the files produced. " +
+      "Generalize: describe how to do THIS KIND of work next time, not this one instance — drop names, dates and details that only applied here, keep the method, the structure and format of the deliverable, " +
+      "the checks that made it good, and the mistakes to avoid. The description must say exactly when to use the skill. The instructions are Markdown: steps, the deliverable's format or template (based on what was produced), rules, and a short example adapted from the real output. " +
+      facts + (req.purpose ? " What the user's office does: " + req.purpose : "") + dateNote + " Write the name, description and instructions in " + lang + "."
+    : skill
     ? "You write skills for an AI team: short, practical know-how documents that an AI teammate reads before doing a kind of work. The user describes the skill; define it with the define_skill tool. " +
       "The description must say exactly when to use the skill (it is all the teammates see until they open it). The instructions are Markdown: the steps, the required format or template, concrete rules and a short example of good output. " +
       facts + (req.purpose ? " What the user's office does: " + req.purpose : "") + dateNote + " Write the name, description and instructions in " + lang + "."
@@ -655,7 +668,7 @@ async function compose(req, deps) {
     dateNote + " Write every name, role, skill and instruction in " + lang + ".";
   const tool = skill ? DEFINE_SKILL_TOOL : office ? OFFICE_TOOL : AGENT_TOOL;
   const body = {
-    messages: [{ role: "system", content: system }, { role: "user", content: String(req.text || "").slice(0, 2000) }],
+    messages: [{ role: "system", content: system }, { role: "user", content: String(req.text || "").slice(0, learn ? 14000 : 2000) }],
     tools: [tool], tool_choice: { type: "function", function: { name: tool.function.name } }, temperature: 0.4, max_tokens: office ? 8000 : 3000,
   };
   let last = "unknown";

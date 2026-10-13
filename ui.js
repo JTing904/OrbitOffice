@@ -297,11 +297,38 @@ const UI = (() => {
     }
   }
 
+  // ---------- 从做成的任务里学技能：AI 把这一次的做法提炼成通用的技能，打开编辑器给用户过目，确认后才保存 ----------
+  let skillDraft = null;   // 交给技能库编辑器的草稿
+  async function learnSkill(task, btn) {
+    const a = agentById(task.agentId);
+    btn.disabled = true;
+    btn.textContent = t("td.learning");
+    // 给 AI 看：任务、谁做的、过程（工具步骤）、结论、产出的文件内容（每个截一段）
+    const steps = (task.trace || []).filter(e => !["thinking", "deciding", "switch"].includes(e.type))
+      .map(e => "- " + e.type + (e.kind ? ":" + e.kind : "") + " " + String(e.path || e.text || "").replace(/\s+/g, " ").slice(0, 200)).slice(0, 60).join("\n");
+    let files = "";
+    for (const f of (task.files || []).slice(0, 5)) {
+      const r = await desktop.files.read(f);
+      if (r.ok) files += "\n\n### File: " + f + "\n" + r.text.slice(0, 2500);
+    }
+    const text = "Task: " + taskTitle(task) + "\nDone by: " + agentName(a) + " (" + agentRole(a) + ")\n\nSteps taken:\n" + steps +
+      "\n\nFinal summary:\n" + String(task.result || "").slice(0, 2000) + (files ? "\n\nFiles produced:" + files : "");
+    const r = await desktop.agent.compose({ kind: "learn", text, lang: LANG, purpose: OFFICE.purpose });
+    btn.disabled = false;
+    btn.textContent = t("td.learn");
+    if (!r || !r.ok) return toast(t("office.ai.fail", { error: (r && (r.detail || r.error)) || "?" }), { kind: "warn", ttl: 10000 });
+    const one = s => String(s || "").replace(/\s+/g, " ").trim();
+    skillDraft = "---\nname: " + one(r.result.name) + "\ndescription: " + one(r.result.description) + "\nsource: learned\n---\n\n" + String(r.result.instructions || "").trim() + "\n";
+    open("brain");
+    toast(t("td.learned"), { kind: "ok", ttl: 6000 });
+  }
+
   // ---------- 技能库：团队共用的做事方法（SKILL.md，格式和 Claude 的技能一样）----------
   // 员工平时只看名字和一句话简介，干活前觉得用得上才读全文。
   function buildSkills(box) {
     const api = desktop.skills;
     let editing = null;   // { id（新技能为 null）, text } 或 { ai: true }
+    if (skillDraft) { editing = { id: null, text: skillDraft }; skillDraft = null; setTimeout(() => { const ed = box.querySelector(".office-editor"); if (ed) ed.scrollIntoView({ block: "center" }); }, 300); }
     let busy = "";
     const NEW = () => "---\nname: " + t("skill.newName") + "\ndescription: " + t("skill.newDesc") + "\n---\n\n" + t("skill.newBody") + "\n";
     const fail = r => UI.toast(t("skill.e", { error: (r && (r.error || r.detail)) || "?" }), { kind: "warn", ttl: 9000 });
@@ -510,6 +537,7 @@ const UI = (() => {
     const acts = el("div", "td-actions");
     if (task.status !== "done") acts.append(button("ghost small danger", t("td.cancel"), () => cancelTask(task.id)));
     else if (task.failed) acts.append(button("ghost small", t("td.retry"), () => { const n = retryTask(task.id); if (n) openTask(n.id); }));
+    else if (task.real && window.desktop && desktop.skills) acts.append(button("ghost small", t("td.learn"), e => learnSkill(task, e.currentTarget)));
     if (acts.childNodes.length) head.append(acts);
     v.append(head);
 

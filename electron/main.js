@@ -629,7 +629,7 @@ ipcMain.handle("agent:say", async (_e, req) => {
 ipcMain.handle("agent:compose", async (_e, req) => {
   req = req || {};
   try {
-    return await compose({ kind: ["office", "skill"].includes(req.kind) ? req.kind : "agent", text: String(req.text || "").slice(0, 2000), lang: req.lang,
+    return await compose({ kind: ["office", "skill", "learn"].includes(req.kind) ? req.kind : "agent", text: String(req.text || "").slice(0, 14000), lang: req.lang,
       purpose: String(req.purpose || "").slice(0, 2000), team: String(req.team || "").slice(0, 2000) }, {
       sources: () => config.sources || [], alts: altModels,
       call: (source, pathname, body) => callSource(source, pathname, body, 120000),
