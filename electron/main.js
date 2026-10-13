@@ -10,6 +10,7 @@ const mcp = require("./mcp");
 const office = require("./office");
 const memory = require("./memory");
 const localai = require("./localai");
+const skills = require("./skills");
 
 // 设置和数据放在哪：老用户继续用原来的 %APPDATA%/myaioffice（改了产品名也不丢设置、Key 和记录）；新用户用产品名命名的文件夹
 {
@@ -402,6 +403,23 @@ async function autoStartLocal() {
   catch (_) { const s = findSource(LOCAL_ID); if (s) { s.enabled = false; saveConfig(); } }   // 起不来就先停用，设置里会显示原因
 }
 
+// ---- 技能库（见 skills.js）----
+const skillCall = fn => { try { return { ok: true, value: fn() }; } catch (e) { return { ok: false, error: String(e.message || e) }; } };
+ipcMain.handle("skills:list", () => skillCall(() => skills.list()));
+ipcMain.handle("skills:read", (_e, id) => skillCall(() => skills.read(String(id))));
+ipcMain.handle("skills:write", (_e, id, text) => skillCall(() => skills.write(String(id), String(text || ""))));
+ipcMain.handle("skills:create", (_e, name, text) => skillCall(() => { const id = skills.uniqueId(String(name || "")); skills.write(id, String(text || "")); return id; }));
+ipcMain.handle("skills:remove", (_e, id) => skillCall(() => skills.remove(String(id))));
+ipcMain.handle("skills:importText", (_e, name, text) => skillCall(() => skills.importText(String(name || ""), String(text || "").slice(0, 200 * 1024))));
+// 导入技能：选一个技能文件夹（里面有 SKILL.md），或者一个或多个 .md 文件
+ipcMain.handle("skills:importFolder", async e => {
+  const r = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender), { properties: ["openDirectory"] });
+  if (r.canceled || !r.filePaths[0]) return { ok: true, value: null };
+  return skillCall(() => skills.importFolder(r.filePaths[0]));
+});
+ipcMain.handle("skills:pickFiles", async e => { try { return { ok: true, value: await pickTextFiles(e, true) }; } catch (err) { return { ok: false, error: String(err.message || err) }; } });
+ipcMain.handle("skills:openDir", () => { shell.openPath(skills.dir()); return true; });
+
 // ---- 办公室和员工：存成文件（见 office.js），用户可以增删改 ----
 const userDir = () => app.getPath("userData");
 const wrap = fn => { try { return fn(); } catch (e) { return { ok: false, error: String(e.message || e) }; } };
@@ -526,6 +544,8 @@ ipcMain.handle("agent:run", async (e, req) => {
       skills: Array.isArray(req.skills) ? req.skills.slice(0, 20).map(s => String(s).slice(0, 60)) : [],
       refs: req.agentId ? office.refsText(userDir(), String(req.agentId)) : "",
       purpose: String(req.purpose || "").slice(0, 2000), external: !!req.external,
+      skillCatalog: safe(() => skills.catalog(), ""),
+      skillHints: safe(() => skills.match(String(req.title || "") + " " + String(req.origin || "")).map(s => s.id).join(", "), ""),
       memory: config.projectDir ? safe(() => memory.memoryText(config.projectDir, String(req.title || "") + " " + String(req.origin || "")), "") : "", origin: String(req.origin || "").slice(0, 600),
       team: String(req.team || "").slice(0, 800), allowHandoff: !!req.allowHandoff, caps: currentCaps(),
       chat: !!req.chat, history: Array.isArray(req.history) ? req.history.slice(-8) : [],
@@ -536,6 +556,7 @@ ipcMain.handle("agent:run", async (e, req) => {
       alts: altModels,
       cancelled: () => cancelledRuns.has(req.taskId),
       connectorTools: () => mcp.agentTools(),
+      skill: (id, file) => { const r = skills.readForAgent(id, file); return { name: r.skill.name, text: r.text, external: r.skill.external }; },
       callTool: mcp.callTool,
       call: async (source, pathname, body) => {
         const r = await callSource(source, pathname, body, 90000);
@@ -606,7 +627,7 @@ ipcMain.handle("agent:say", async (_e, req) => {
 ipcMain.handle("agent:compose", async (_e, req) => {
   req = req || {};
   try {
-    return await compose({ kind: req.kind === "office" ? "office" : "agent", text: String(req.text || "").slice(0, 2000), lang: req.lang,
+    return await compose({ kind: ["office", "skill"].includes(req.kind) ? req.kind : "agent", text: String(req.text || "").slice(0, 2000), lang: req.lang,
       purpose: String(req.purpose || "").slice(0, 2000), team: String(req.team || "").slice(0, 2000) }, {
       sources: () => config.sources || [], alts: altModels,
       call: (source, pathname, body) => callSource(source, pathname, body, 120000),
@@ -621,7 +642,7 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on("second-instance", () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
-  app.whenReady().then(() => { loadConfig(); localai.init(app.getPath("userData")); createWindow(); config.connectors.forEach(startConn); autoStartLocal(); });
+  app.whenReady().then(() => { loadConfig(); localai.init(app.getPath("userData")); skills.init(app.getPath("userData")); createWindow(); config.connectors.forEach(startConn); autoStartLocal(); });
   app.on("window-all-closed", () => app.quit());
   app.on("will-quit", () => { mcp.stopAll(); localai.stop(); });   // 连接器和本地 AI 启动的程序跟着 App 一起关
 }

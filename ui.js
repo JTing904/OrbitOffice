@@ -234,7 +234,9 @@ const UI = (() => {
     const memLine = el("p", "set-note brain-memory");
     if (window.desktop && desktop.files && desktop.files.memory) desktop.files.memory().then(m => { memLine.textContent = t("brain.memory", { n: m.count }); });
     notes.append(memLine);
-    v.append(head, notes, q, filters, list);
+    const skillBox = el("section", "td-block skills");
+    if (window.desktop && desktop.skills) buildSkills(skillBox);
+    v.append(head, notes, skillBox, q, filters, list);
     renderFilters();
     brainSig = "";
     renderMemories();
@@ -293,6 +295,123 @@ const UI = (() => {
       }
       list.append(card);
     }
+  }
+
+  // ---------- 技能库：团队共用的做事方法（SKILL.md，格式和 Claude 的技能一样）----------
+  // 员工平时只看名字和一句话简介，干活前觉得用得上才读全文。
+  function buildSkills(box) {
+    const api = desktop.skills;
+    let editing = null;   // { id（新技能为 null）, text } 或 { ai: true }
+    let busy = "";
+    const NEW = () => "---\nname: " + t("skill.newName") + "\ndescription: " + t("skill.newDesc") + "\n---\n\n" + t("skill.newBody") + "\n";
+    const fail = r => UI.toast(t("skill.e", { error: (r && (r.error || r.detail)) || "?" }), { kind: "warn", ttl: 9000 });
+
+    // 导入别人写的技能：先给你看全文，同意了才留下
+    async function confirmImport(id) {
+      const r = await api.read(id);
+      if (!r.ok) return fail(r);
+      const ok = await UI.askUser({ agent: { color: "#67e8f9", zh: { name: t("skill.title") }, en: { name: t("skill.title") } }, input: false,
+        yes: t("office.import.yes"), no: t("office.import.no"), message: t("skill.importConfirm", { text: r.value.slice(0, 900) + (r.value.length > 900 ? "…" : "") }) });
+      if (!ok.ok) await api.remove(id);
+    }
+    async function importTexts(files) {
+      for (const f of files) {
+        const r = await api.importText(f.name, f.text);
+        if (!r.ok) { fail(r); continue; }
+        await confirmImport(r.value);
+      }
+      draw();
+    }
+
+    async function draw() {
+      const res = await api.list();
+      const items = res.ok ? res.value : [];
+      box.replaceChildren(el("span", "eyebrow", t("skill.title")), el("p", "set-note", t("skill.note")));
+      const tools = el("div", "set-buttons skill-tools");
+      tools.append(
+        button("ghost small", t("skill.new"), () => { editing = { id: null, text: NEW() }; draw(); }),
+        button("ghost small", t("skill.ai"), () => { editing = { ai: true }; draw(); }),
+        button("ghost small", t("skill.importFolder"), async () => { const r = await api.importFolder(); if (!r.ok) return fail(r); if (r.value) await confirmImport(r.value); draw(); }),
+        button("ghost small", t("skill.importFiles"), async () => { const r = await api.pickFiles(); if (!r.ok) return fail(r); await importTexts(r.value); }),
+        button("ghost small", t("office.openDir"), () => api.openDir()),
+      );
+      box.append(tools);
+      if (busy) box.append(el("p", "set-status", busy));
+      if (editing && editing.ai) box.append(aiPanel());
+      if (editing && !editing.ai && !editing.id) box.append(editor());
+      if (!items.length && !editing) box.append(el("p", "set-note", t("skill.empty")));
+      for (const s of items) {
+        const row = el("div", "skill-row");
+        const who = el("div", "skill-who");
+        who.append(el("b", null, s.name), el("span", null, s.description || "—"));
+        const tags = el("div", "skill-tags");
+        if (s.external) tags.append(el("em", "office-ext", t("office.external")));
+        if (s.files.length) tags.append(el("em", null, t("skill.files", { n: s.files.length })));
+        row.append(who, tags,
+          button("ghost small", t(editing && editing.id === s.id ? "office.close" : "office.edit"), async () => {
+            if (editing && editing.id === s.id) { editing = null; return draw(); }
+            const r = await api.read(s.id);
+            if (!r.ok) return fail(r);
+            editing = { id: s.id, text: r.value };
+            draw();
+          }),
+          button("ghost small danger", t("office.removeAgent"), async () => { if (window.confirm(t("skill.removeConfirm", { name: s.name }))) { await api.remove(s.id); draw(); } }));
+        box.append(row);
+        if (editing && editing.id === s.id) box.append(editor());
+      }
+      // 把 .md 拖进来：导入成技能
+      box.ondragover = e => { e.preventDefault(); box.classList.add("drop"); };
+      box.ondragleave = () => box.classList.remove("drop");
+      box.ondrop = async e => {
+        e.preventDefault();
+        box.classList.remove("drop");
+        const files = [...e.dataTransfer.files].filter(f => /\.(md|txt)$/i.test(f.name)).slice(0, 20);
+        if (!files.length) return UI.toast(t("office.e.notMd"), { kind: "warn" });
+        importTexts(await Promise.all(files.map(async f => ({ name: f.name, text: (await f.text()).slice(0, 200 * 1024) }))));
+      };
+    }
+
+    function editor() {
+      const form = el("div", "office-editor");
+      const ta = el("textarea", "set-input wide mono office-raw");
+      ta.rows = 16; ta.value = editing.text; ta.spellcheck = false;
+      const acts = el("div", "set-buttons");
+      acts.append(button("primary", t("office.save"), async () => {
+        const text = ta.value;
+        const name = (text.match(/^name\s*:\s*(.+)$/m) || [, ""])[1].trim();
+        const r = editing.id ? await api.write(editing.id, text) : await api.create(name, text);
+        if (!r.ok) return fail(r);
+        editing = null;
+        UI.toast(t("office.saved"), { kind: "ok", ttl: 3000 });
+        draw();
+      }), button("ghost", t("office.cancel"), () => { editing = null; draw(); }));
+      form.append(el("p", "set-note", t("skill.editNote")), ta, acts);
+      return form;
+    }
+
+    function aiPanel() {
+      const p = el("div", "office-ai");
+      const input = el("textarea", "set-input wide");
+      input.rows = 3; input.placeholder = t("skill.ai.ph");
+      const acts = el("div", "set-buttons");
+      const go = button("primary", t("office.ai.go"), async () => {
+        if (!input.value.trim()) return;
+        busy = t("office.ai.working");
+        draw();
+        const r = await desktop.agent.compose({ kind: "skill", text: input.value.trim(), lang: LANG, purpose: OFFICE.purpose });
+        busy = "";
+        if (!r || !r.ok) { editing = null; UI.toast(t("office.ai.fail", { error: (r && (r.detail || r.error)) || "?" }), { kind: "warn", ttl: 10000 }); return draw(); }
+        const a = r.result;
+        const oneLine = s => String(s || "").replace(/\s+/g, " ").trim();
+        editing = { id: null, text: "---\nname: " + oneLine(a.name) + "\ndescription: " + oneLine(a.description) + "\n---\n\n" + String(a.instructions || "").trim() + "\n" };
+        draw();
+      });
+      acts.append(go, button("ghost", t("office.cancel"), () => { editing = null; draw(); }));
+      p.append(input, acts);
+      return p;
+    }
+
+    draw();
   }
 
   // ---------- 任务详情：把员工做了什么完整摊开 ----------

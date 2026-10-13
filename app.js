@@ -509,7 +509,7 @@ function onAgentEvent(ev) {
   const trace = task.trace || (task.trace = []);
   if (trace.length < 160) trace.push({ at: Date.now(), type: ev.type, kind: ev.kind, path: ev.path, text: ev.text, step: ev.step, source: ev.source, from: ev.from, error: ev.error });
   if (ev.type === "thinking") { task.stepText = t("real.thinking", ev); task.progress = Math.min(0.92, ev.step / ev.max); }
-  else if (["list", "read", "write", "edit", "search", "run", "tool"].includes(ev.type)) task.stepText = t("real." + ev.type, { path: ev.path });
+  else if (["list", "read", "write", "edit", "search", "run", "tool", "skill"].includes(ev.type)) task.stepText = t("real." + ev.type, { path: ev.path });
   if (task.chat && task.stepText) ChatUI.progress(a.id, task.stepText);   // 聊天窗口里显示他正在做哪一步
   else if (ev.type === "switch") addLog("log.realFailed", { a: a.id, task: snap(task), error: t("real.switch", { from: ev.from }) + " " + (ev.error || "") });
   else if (ev.type === "ask") {

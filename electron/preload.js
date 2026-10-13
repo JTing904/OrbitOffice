@@ -49,6 +49,18 @@ contextBridge.exposeInMainWorld("desktop", {
     compose: req => ipcRenderer.invoke("agent:compose", req),
     onEvent: cb => ipcRenderer.on("agent:event", (_e, payload) => cb(payload)),
   },
+  // 技能库（大脑里，整个团队共用）
+  skills: {
+    list: () => ipcRenderer.invoke("skills:list"),
+    read: id => ipcRenderer.invoke("skills:read", id),
+    write: (id, text) => ipcRenderer.invoke("skills:write", id, text),
+    create: (name, text) => ipcRenderer.invoke("skills:create", name, text),
+    remove: id => ipcRenderer.invoke("skills:remove", id),
+    importText: (name, text) => ipcRenderer.invoke("skills:importText", name, text),
+    importFolder: () => ipcRenderer.invoke("skills:importFolder"),
+    pickFiles: () => ipcRenderer.invoke("skills:pickFiles"),
+    openDir: () => ipcRenderer.invoke("skills:openDir"),
+  },
   // 内置本地 AI
   local: {
     detect: () => ipcRenderer.invoke("local:detect"),
