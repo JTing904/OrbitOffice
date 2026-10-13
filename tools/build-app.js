@@ -21,7 +21,7 @@ fs.rmSync(path.join(out, "resources", "default_app.asar"), { force: true });
 
 // App 本体：页面、脚本、本地库、模型、桌面外壳
 fs.mkdirSync(appDir, { recursive: true });
-for (const f of ["index.html", "style.css", "app.js", "ui.js", "chat.js", "i18n.js", "office3d.js", "package.json"]) {
+for (const f of ["index.html", "style.css", "app.js", "ui.js", "chat.js", "i18n.js", "office3d.js", "office-def.js", "office-ui.js", "package.json"]) {
   fs.copyFileSync(path.join(root, f), path.join(appDir, f));
 }
 fs.cpSync(path.join(root, "vendor"), path.join(appDir, "vendor"), { recursive: true });

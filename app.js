@@ -4,7 +4,9 @@
 // 界面面板（员工面板、大脑、设置、指令面板、提示条、小地图）在 ui.js；文字在 i18n.js。
 
 // ---- 数据：员工、团队、交接链 ----
-// 员工的名字 / 岗位 / 技能 / 步骤文案按语言各存一份；用户在设置里改过的内容保存在 edits，对两种语言都生效。
+// 下面的 AGENTS / TEAMS 是「软件团队」模板。桌面 App 第一次启动时把它写成 .md 文件（见 office-def.js），
+// 之后从文件读取，用户可以自己增删改员工和办公室；读到的内容会原地替换这两个数组，其余代码不用区分。
+// 只有在浏览器里直接打开页面（模拟模式）时才一直用模板。
 const AGENTS = [
   {
     id: "planner", team: "product",
@@ -87,7 +89,7 @@ const AGENTS = [
     },
   },
   {
-    id: "devops", team: "engineering",
+    id: "devops", team: "engineering", needsApproval: true,
     brief: "Prepare deployment for the project: write the files that are needed (for example a Dockerfile, a CI workflow, scripts) and docs/deploy.md covering release steps, health checks and rollback.", color: "#d9822b",
     keywords: ["部署", "发布", "上线", "容器", "监控", "告警", "流水线", "服务器", "环境", "回滚",
       "deploy", "release", "docker", "kubernetes", "k8s", "ci", "cd", "pipeline", "server", "monitor", "rollback", "infra", "container"],
@@ -177,6 +179,9 @@ const TEAMS = [
   { id: "security", color: "#a855f7", zh: "安全组", en: "Security" },
 ];
 
+// 软件团队模板的原样副本：AGENTS / TEAMS 之后会被文件里的内容替换，恢复模板时用这两份
+const TEMPLATE_AGENTS = AGENTS.slice(), TEMPLATE_TEAMS = TEAMS.slice();
+
 // 交接链，对应做一个项目的步骤：需求 → 设计 → 写代码 → 测试 → 审查 → 部署 → 文档
 // （planner → designer → developer → tester → reviewer → devops → writer；修完 Bug 也交给测试）
 const HANDOFF = {
@@ -191,18 +196,6 @@ const HANDOFF = {
   security: { to: "developer", tpl: "tpl.fromSecurity" },
 };
 
-// 各岗位能写的文件范围，由 App 强制执行：不是自己职责内的文件写不了，只能交接给对口的同事。
-// 没列出的岗位（开发工程师、调试专家）可以写项目里的任何文件。
-const WRITE_SCOPE = {
-  planner:  { allow: ["^docs/"], hint: "planning documents under docs/" },
-  reviewer: { allow: ["^docs/"], hint: "review notes under docs/" },
-  designer: { allow: ["^design/", "^docs/"], hint: "mockups under design/ and design notes under docs/" },
-  writer:   { allow: ["^docs/", "\\.(md|txt)$"], hint: "documentation: Markdown or text files" },
-  attacker: { allow: ["^security/"], hint: "attack reports under security/" },
-  security: { allow: ["^security/", "^docs/"], hint: "security reviews under security/ and docs/" },
-  tester:   { allow: ["^tests?/", "^__tests__/", "^docs/", "(^|/)test_[^/]+$", "[._-](test|spec)\\.[a-z]+$"], hint: "tests under tests/ and test docs under docs/" },
-  devops:   { allow: ["^docs/", "^\\.github/", "^scripts?/", "^deploy/", "(^|/)Dockerfile[^/]*$", "(^|/)docker-compose[^/]*$", "\\.(ya?ml|sh|bat|ps1|toml|ini|conf)$", "(^|/)\\.[a-z]+ignore$", "(^|/)Makefile$"], hint: "deployment files: Dockerfile, CI workflows, scripts, and docs under docs/" },
-};
 const MODE_IDS = ["manual", "auto", "full"];
 const RISKY = /部署|发布|上线|生产|删除|回滚|\b(deploy|release|drop|delete|rollback)/i;
 const PICK_AUTO = "auto";   // 下拉框里的「自动分配」
@@ -222,7 +215,8 @@ let tasks = [];
 let logs = [];     // { time, key, vars }，按当前语言渲染
 let nextId = 1;
 let mode = "auto";
-let edits = {};    // agentId -> { name, role, color, skills }
+let edits = {};    // 旧版本：用户在设置里改过的员工信息。第一次写成 .md 文件时带过去，之后不再使用
+const OFFICE = { purpose: "", dir: "", fromFiles: false };   // 这个办公室是做什么的；定义文件放在哪
 let agentsVersion = 0;   // 员工信息或语言变化时 +1，用来刷新界面文字
 
 function load() {
@@ -250,14 +244,25 @@ function save() {
 }
 
 // ---- 取员工 / 团队的显示信息 ----
-const agentById = id => AGENTS.find(a => a.id === id);
-const teamById = id => TEAMS.find(x => x.id === id);
+const agentExists = id => AGENTS.some(a => a.id === id);
+// AI 交接时偶尔写名字而不是 id：按 id、名字依次找
+const resolveAgentId = to => {
+  const s = String(to || "").trim();
+  const a = AGENTS.find(x => x.id === s) || AGENTS.find(x => x.id === s.toLowerCase()) || AGENTS.find(x => agentName(x) === s) || AGENTS.find(x => s && (s.includes(agentName(x)) || agentName(x).includes(s)));
+  return a ? a.id : s;
+};
+const ghostAgent = id => {
+  const texts = { name: t("agent.removed"), role: "", skills: [], steps: [""], result: "" };
+  return { id, team: "", color: "#6b7280", brief: "", keywords: [], removed: true, zh: texts, en: texts };
+};
+const agentById = id => AGENTS.find(a => a.id === id) || ghostAgent(id);
+const teamById = id => TEAMS.find(x => x.id === id) || { id, name: "?", color: "#6b7280", zh: "?", en: "?" };
 const editOf = a => edits[a.id] || {};
 const agentName = a => editOf(a).name || a[LANG].name;
 const agentRole = a => editOf(a).role || a[LANG].role;
 const agentSkills = a => (editOf(a).skills && editOf(a).skills.length ? editOf(a).skills : a[LANG].skills);
 const agentColor = a => editOf(a).color || a.color;
-const teamName = x => x[LANG];
+const teamName = x => x.name || x[LANG];
 const taskTitle = o => (o.tpl ? t(o.tpl, { topic: o.topic }) : o.title);
 const snap = task => ({ title: task.title, tpl: task.tpl, topic: task.topic });
 
@@ -287,7 +292,9 @@ function pickAgent(title) {
   let best = null, bestScore = 0;
   for (const a of AGENTS) {
     // 专职岗位（安全组）的关键词更明确，命中时优先于通用岗位
-    const score = a.keywords.reduce((n, k) => n + (keywordHit(text, k) ? 1 : 0), 0) * (a.specialist ? 1.5 : 1);
+    // 任务里直接出现了员工的名字或岗位（例如「文案」），再加分：自建办公室里关键词常常互相重叠
+    const named = [agentName(a), agentRole(a)].filter(w => w && w.length >= 2).some(w => text.includes(w.toLowerCase())) ? 1.5 : 0;
+    const score = (a.keywords.reduce((n, k) => n + (keywordHit(text, k) ? 1 : 0), 0) + named) * (a.specialist ? 1.5 : 1);
     if (score > bestScore) { best = a; bestScore = score; }
   }
   if (best) return best.id;
@@ -297,9 +304,15 @@ function pickAgent(title) {
 }
 
 // 当前模式下，这个任务是否需要用户批准；返回原因（reason.* 的后缀），空字符串表示不需要
+// 员工能写哪些文件（.md 里的 writes）；没有限制时返回 null
+function scopeOf(a) {
+  if (!a.writes || !a.writes.length) return null;
+  return { allow: a.writes.map(OfficeDef.globToRegex), hint: a.writes.join(", ") };
+}
+
 function approvalReason(task) {
   if (mode === "manual") return "manual";
-  if (mode === "auto" && (task.agentId === "devops" || RISKY.test(task.title))) return "risky";
+  if (mode === "auto" && (agentById(task.agentId).needsApproval || RISKY.test(task.title))) return "risky";
   return "";
 }
 
@@ -438,6 +451,9 @@ function realError(res) {
   const k = "real.e." + res.error;
   return I18N[LANG][k] ? t(k, { detail: res.detail || "" }) : (res.error || "") + (res.detail ? " " + res.detail : "");
 }
+// 告诉 AI 有哪些同事：id（交接时用）、名字（职责说明里常用名字称呼同事）、岗位
+const teamList = exceptId => AGENTS.filter(x => x.id !== exceptId).map(x => x.id + ": " + agentName(x) + (agentRole(x) ? ", " + agentRole(x) : "")).join("; ");
+
 function startReal(task, a) {
   // 交接出来的任务：带上用户最初的要求，让接手的人知道整件事的目标，而不只是眼前这一步
   let root = task;
@@ -447,8 +463,9 @@ function startReal(task, a) {
   task.stepText = t("real.thinking", { step: 1, source: "…" });
   task.blocked = false;
   desktop.agent.run({ taskId: task.id, title: taskTitle(task), agentName: agentName(a), agentRole: agentRole(a), brief: a.brief, context: task.context || "", origin: root !== task ? taskTitle(root) : "",
-    scope: WRITE_SCOPE[a.id] || null, localOnly: !!a.localOnly, chat: !!task.chat, history: task.history || [],
-    team: AGENTS.filter(x => x.id !== a.id).map(x => x.id + ": " + x.en.role).join("; "), allowHandoff: !!task.handoff && (task.depth || 0) < 6,
+    scope: scopeOf(a), localOnly: !!a.localOnly, chat: !!task.chat, history: task.history || [],
+    team: teamList(a.id), allowHandoff: !!task.handoff && (task.depth || 0) < 6,
+    agentId: a.id, skills: agentSkills(a), purpose: OFFICE.purpose, external: !!a.external,
     mode, lang: LANG }).then(res => {
     task.status = "done";
     task.doneAt = Date.now();
@@ -462,7 +479,7 @@ function startReal(task, a) {
     task.result = !res.ok ? t("real.failed", { error: realError(res) })
       : res.blocked ? t("real.blocked", { reason: res.summary })
       : (task.files.length ? t("real.done.files", { summary: res.summary, files: task.files.join("、") }) : res.summary + (task.chat ? "\n\n" + t("real.done.nofiles") : ""));
-    ChatUI.tell(a.id, task.result, task.chat === "group");
+    ChatUI.tell(a.id, task.result, task.chat === "group", task.id);
     if (res.ok && res.blocked) {
       addLog("log.realBlocked", { a: a.id, task: snap(task) });
       UI.toast(t("toast.blocked", { a: agentName(a) }), { kind: "warn", ttl: 12000, actionLabel: t("toast.view"), action: () => UI.openTask(task.id) });
@@ -493,6 +510,7 @@ function onAgentEvent(ev) {
   if (trace.length < 160) trace.push({ at: Date.now(), type: ev.type, kind: ev.kind, path: ev.path, text: ev.text, step: ev.step, source: ev.source, from: ev.from, error: ev.error });
   if (ev.type === "thinking") { task.stepText = t("real.thinking", ev); task.progress = Math.min(0.92, ev.step / ev.max); }
   else if (["list", "read", "write", "edit", "search", "run", "tool"].includes(ev.type)) task.stepText = t("real." + ev.type, { path: ev.path });
+  if (task.chat && task.stepText) ChatUI.progress(a.id, task.stepText);   // 聊天窗口里显示他正在做哪一步
   else if (ev.type === "switch") addLog("log.realFailed", { a: a.id, task: snap(task), error: t("real.switch", { from: ev.from }) + " " + (ev.error || "") });
   else if (ev.type === "ask") {
     // 员工提问或请求批准：用 App 内的弹窗，任务会一直等到你回应
@@ -534,32 +552,38 @@ function handoffFrom(cur, a) {
 // 安全员安排的修复做完后，必须让攻击者复测一次：修复本身可能没修好，或带来新漏洞。
 // 只强制一轮（这条任务链上攻击者已经出场两次就不再强制），免得来回没完。
 function retestAfterFix(task, a) {
-  if (a.id !== "developer" || task.from !== "security") return null;
+  const from = task.from && AGENTS.find(x => x.id === task.from);
+  const by = from && from.recheckBy;
+  if (!by || by === a.id || !agentExists(by)) return null;
   let rounds = 0;
-  for (let p = task; p; p = p.parent && tasks.find(x => x.id === p.parent)) if (p.agentId === "attacker") rounds++;
-  return rounds >= 2 ? null : { to: "attacker", task: t("route.retest") };
+  for (let p = task; p; p = p.parent && tasks.find(x => x.id === p.parent)) if (p.agentId === by) rounds++;
+  return rounds >= 2 ? null : { to: by, task: from.recheckTask || t("route.recheck", { name: agentName(from) }) };
 }
 
 // 没有界面的项目不需要设计：要交给设计师、但用户最初的要求明显是命令行/接口/脚本之类、又没提到任何界面时，直接改交给开发者
 const UI_WORDS = /界面|页面|网页|网站|前端|按钮|屏幕|窗口|游戏|画面|小程序|\b(ui|ux|web\s?(site|page|app)|website|frontend|front-end|page|screen|window|button|game|gui|html|css|mobile app|desktop app)\b/i;
 const NO_UI_WORDS = /命令行|终端|脚本|接口|后端|服务端|爬虫|数据处理|批处理|函数库|工具库|类库|\b(cli|command[- ]line|terminal|script|api|backend|back-end|library|sdk|daemon|cron|batch|parser|crawler|scraper)\b/i;
+// 返回改交给谁（员工 .md 里的 no-ui-handoff），不用改时返回 null
 function skipsDesign(cur, h) {
-  if (h.to !== "designer") return false;
+  const target = AGENTS.find(x => x.id === h.to);
+  if (!target || !target.noUiHandoff || !agentExists(target.noUiHandoff)) return null;
   let root = cur;
   for (let i = 0; i < 12 && root.parent; i++) { const p = tasks.find(x => x.id === root.parent); if (!p) break; root = p; }
   // 只看用户最初的要求：交接任务是 AI 自己写的，常会顺手写上「设计界面」
   const text = taskTitle(root);
-  return NO_UI_WORDS.test(text) && !UI_WORDS.test(text);
+  return NO_UI_WORDS.test(text) && !UI_WORDS.test(text) ? target.noUiHandoff : null;
 }
 
 // 用量数字的简写：1234 → 1.2k，1234567 → 1.2M
 const fmtTokens = n => (n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, "") + "M" : n >= 1e3 ? (n / 1e3).toFixed(1).replace(/\.0$/, "") + "k" : String(n || 0));
 
 function proposeHandoff(cur, a, h) {
-  if (!h || !agentById(h.to) || h.to === a.id) return;
-  // 有固定下一站的岗位（攻击者的报告必须先经安全员核实）：不管它想交给谁，都改交给那一位
-  if (a.handsTo && h.to !== a.handsTo) h = { to: a.handsTo, task: t("route." + a.id) };
-  if (skipsDesign(cur, h)) h = { to: "developer", task: h.task };
+  if (h) h = Object.assign({}, h, { to: resolveAgentId(h.to) });
+  if (!h || !agentExists(h.to) || h.to === a.id) return;
+  // 有固定下一站的岗位（例如攻击者的报告必须先经安全员核实）：不管它想交给谁，都改交给那一位
+  if (a.handsTo && agentExists(a.handsTo) && h.to !== a.handsTo) h = { to: a.handsTo, task: a.handoffTask || h.task };
+  const instead = skipsDesign(cur, h);
+  if (instead) h = { to: instead, task: h.task };
   const next = createTask(h.task, h.to, { handoff: true, from: a.id, parent: cur.id, topic: cur.topic });
   next.depth = (cur.depth || 0) + 1;
   next.context = (agentName(a) + " (" + agentRole(a) + "): " + (cur.result || "")).slice(0, 3000);
@@ -918,12 +942,34 @@ function applyLanguage(l) {
 }
 
 // ---- 启动 ----
+// 从文件读员工和办公室；第一次启动时先把模板写成文件。读不到或内容不能用时继续用模板，并提示。
+async function loadOffice() {
+  if (!(DESKTOP && desktop.office)) return;
+  let r = await desktop.office.load();
+  if (r && r.exists === false) {
+    r = await desktop.office.write(OfficeDef.seed(LANG, edits));
+    if (r && r.ok !== false) { edits = {}; save(); }
+  }
+  if (!r || r.ok === false || !r.exists) { console.error("office load failed", r); OFFICE.loadError = (r && r.error) || "load"; return; }
+  OFFICE.dir = r.dir;
+  OFFICE.purpose = r.purpose || "";
+  const teams = (r.teams || []).map(x => ({ id: x.id, name: x.name, color: x.color, style: x.style }));
+  if (!teams.length) { OFFICE.loadError = "no-teams"; return; }
+  const agents = (r.agents || []).map(f => OfficeDef.toAgent(f, teams, LANG));
+  if (!agents.length) { OFFICE.loadError = "no-agents"; return; }
+  TEAMS.splice(0, TEAMS.length, ...teams);
+  // 按团队顺序排员工；同一个团队里按 .md 里的 order（工位顺序），没写的排在后面
+  AGENTS.splice(0, AGENTS.length, ...teams.flatMap(tm => agents.filter(a => a.team === tm.id).sort((x, y) => x.order - y.order || x.id.localeCompare(y.id))));
+  OFFICE.fromFiles = true;
+}
+
 async function main() {
   load();
   setLang(LANG);
+  await loadOffice();
 
   const in3d = window.Office3D && Office3D.init
-    ? await Office3D.init($("office"), AGENTS.map(a => ({ id: a.id, team: a.team, color: agentColor(a) })), TEAMS,
+    ? await Office3D.init($("office"), AGENTS.map(a => ({ id: a.id, team: a.team, color: agentColor(a), look: a.look && a.look.acc ? a.look : null })), TEAMS,
       { pick: id => UI.selectAgent(id), team: id => UI.focusTeam(id), brain: () => UI.open("brain") })
     : false;
 
@@ -932,6 +978,9 @@ async function main() {
   if (DESKTOP) { desktop.agent.onEvent(onAgentEvent); refreshRealReady(); setInterval(refreshRealReady, 3000); }
   UI.init({ in3d });
   $("hq").textContent = TEAMS.length + " teams · " + AGENTS.length + " agents · 1 brain";
+  if (OFFICE.loadError) UI.toast(t("office.loadError", { error: OFFICE.loadError }), { kind: "warn", ttl: 12000 });
+  // 编辑办公室后页面会重新载入：回到设置页的办公室那一段
+  try { if (sessionStorage.getItem("reopen") === "office") { sessionStorage.removeItem("reopen"); UI.open("settings"); setTimeout(() => { const s = document.getElementById("set-office"); if (s) s.scrollIntoView(); }, 50); } } catch (_) { /* 不可用时忽略 */ }
   syncTeamLabels();
 
   $("task-form").addEventListener("submit", e => {

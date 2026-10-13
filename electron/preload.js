@@ -21,10 +21,21 @@ contextBridge.exposeInMainWorld("desktop", {
     reconnect: id => ipcRenderer.invoke("conn:reconnect", id),
     remove: id => ipcRenderer.invoke("conn:remove", id),
   },
+  // 办公室和员工的定义文件
+  office: {
+    load: () => ipcRenderer.invoke("office:load"),
+    write: change => ipcRenderer.invoke("office:write", change),
+    addRefFiles: id => ipcRenderer.invoke("office:addRefFiles", id),
+    addRefText: (id, name, text) => ipcRenderer.invoke("office:addRefText", id, name, text),
+    removeRef: (id, name) => ipcRenderer.invoke("office:removeRef", id, name),
+    pickFiles: () => ipcRenderer.invoke("office:pickFiles"),
+    openDir: () => ipcRenderer.invoke("office:openDir"),
+  },
   files: {
     read: rel => ipcRenderer.invoke("files:read", rel),
     reveal: rel => ipcRenderer.invoke("files:reveal", rel),
     notes: () => ipcRenderer.invoke("files:notes"),
+    memory: () => ipcRenderer.invoke("files:memory"),
   },
   // 员工真干活：在项目文件夹里读写文件
   agent: {
@@ -34,6 +45,7 @@ contextBridge.exposeInMainWorld("desktop", {
     cancel: taskId => ipcRenderer.send("agent:cancel", taskId),
     say: req => ipcRenderer.invoke("agent:say", req),
     talkStop: () => ipcRenderer.send("agent:talkStop"),
+    compose: req => ipcRenderer.invoke("agent:compose", req),
     onEvent: cb => ipcRenderer.on("agent:event", (_e, payload) => cb(payload)),
   },
   // AI 池：多个来源。Key 只能写入，读不回来。

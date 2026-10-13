@@ -77,9 +77,9 @@ const ChatUI = (() => {
     return p;
   }
   // 员工主动发一条消息（不需要回答）
-  function tell(agentId, text, inGroup) {
+  function tell(agentId, text, inGroup, taskId) {
     const key = inGroup ? "group" : agentId;
-    (dm[key] || (dm[key] = [])).push({ text, at: Date.now(), a: agentId });
+    (dm[key] || (dm[key] = [])).push({ text, at: Date.now(), a: agentId, task: taskId || undefined });
     if (!(geo.open && !geo.min && space === key)) unread[key] = (unread[key] || 0) + 1;
     delete busy[agentId];
     saveDm(); badge(); render();
@@ -93,9 +93,9 @@ const ChatUI = (() => {
     if (!(window.desktop && desktop.agent && desktop.agent.say)) return false;
     const state = talk = { stop: false, typing: null };
     const order = [];
-    for (const id of ["planner", pickAgent(topic), "designer", "developer", "tester", "reviewer", "devops", "writer", "debugger", "security", "attacker"]) {
-      const a = agentById(id);
-      if (a && !order.includes(a)) order.push(a);
+    const lead = AGENTS.find(a => a.lead) || AGENTS[0];
+    for (const a of [lead, agentById(pickAgent(topic))].concat(AGENTS.filter(a => !a.specialist), AGENTS)) {
+      if (a && !a.removed && !order.includes(a)) order.push(a);
     }
     const speakers = order.slice(0, 5);
     const transcript = () => (dm.group || []).filter(m => m.text).slice(-14).map(m => (m.me ? "User" : agentName(agentById(m.a))) + ": " + m.text).join("\n");
@@ -104,19 +104,19 @@ const ChatUI = (() => {
     for (const [i, a] of speakers.entries()) {
       if (state.stop) break;
       state.typing = a.id; render();
-      const r = await desktop.agent.say({ mode: "turn", first: i === 0, agentName: agentName(a), agentRole: agentRole(a), brief: a.brief, topic, transcript: transcript(), lang: LANG });
+      const r = await desktop.agent.say({ mode: "turn", first: i === 0, agentName: agentName(a), agentRole: agentRole(a), brief: a.brief, topic, transcript: transcript(), purpose: OFFICE.purpose, lang: LANG });
       if (state.stop) break;
       if (r.ok && r.text) pushGroup({ a: a.id, text: r.text });
       else { failed = r; break; }
     }
     if (!state.stop && !failed) {
-      const p = agentById("planner");
+      const p = lead;
       state.typing = p.id; render();
       const r = await desktop.agent.say({ mode: "plan", agentName: agentName(p), agentRole: agentRole(p), topic, transcript: transcript(),
-        team: AGENTS.map(x => x.id + ": " + x.en.role).join("; "), lang: LANG });
+        team: teamList(null), purpose: OFFICE.purpose, lang: LANG });
       if (r.ok && !state.stop) {
         pushGroup({ a: p.id, text: r.summary, tag: "chat.tag.summary" });
-        const tasks = (r.tasks || []).filter(x => agentById(x.to));
+        const tasks = (r.tasks || []).map(x => Object.assign({}, x, { to: resolveAgentId(x.to) })).filter(x => agentExists(x.to));
         if (tasks.length) pushGroup({ plan: tasks, added: [] });
       } else if (!r.ok) failed = r;
     }
@@ -235,7 +235,7 @@ const ChatUI = (() => {
     }
     return frag;
   }
-  function agentMsg(a, text, tagKey) {
+  function agentMsg(a, text, tagKey, taskId) {
     const row = el("div", "cmsg");
     row.style.setProperty("--c", agentColor(a));
     const who = el("div", "who", agentName(a));
@@ -244,9 +244,47 @@ const ChatUI = (() => {
     txt.append(richText(text));
     const col = el("div");
     col.append(who, txt);
+    const card = taskId && taskCard(taskId);
+    if (card) col.append(card);
     row.append(el("div", "av", agentName(a)[0] || "?"), col);
     return row;
   }
+  // 任务卡片：改了哪些文件、做没做成、交给了谁，点「查看过程」打开任务详情。只是回答问题、什么都没动的回复不显示卡片。
+  function taskCard(taskId) {
+    const x = tasks.find(y => y.id === taskId);
+    if (!x || (!(x.files || []).length && !x.failed && !tasks.some(y => y.parent === x.id))) return null;
+    const card = el("div", "chat-task" + (x.failed ? " bad" : ""));
+    const head = el("div", "chat-task-head");
+    head.append(el("span", "chat-task-st", t(x.failed ? (x.cancelled ? "chat.card.cancelled" : "chat.card.failed") : "chat.card.done")));
+    if (x.usage && x.usage.calls) head.append(el("span", "chat-task-meta", fmtTokens(x.usage.prompt + x.usage.completion) + " tokens"));
+    card.append(head);
+    const files = x.files || [];
+    if (files.length) {
+      const list = el("div", "chat-task-files");
+      for (const f of files.slice(0, 4)) list.append(el("code", null, f));
+      if (files.length > 4) list.append(el("span", null, t("chat.card.more", { n: files.length - 4 })));
+      card.append(list);
+    }
+    const next = tasks.find(y => y.parent === x.id);
+    if (next) card.append(el("div", "chat-task-meta", "→ " + t("chat.card.next", { name: agentName(agentById(next.agentId)), status: t("st." + next.status) })));
+    const open = el("button", "ghost small", t("chat.card.open"));
+    open.type = "button";
+    open.addEventListener("click", () => UI.openTask(x.id));
+    card.append(open);
+    return card;
+  }
+  // 员工正在处理聊天里的事：只更新那一行的文字（例如「正在读 server.js」），不重画整个聊天记录
+  function progress(agentId, text) {
+    const line = document.querySelector('#chat-log [data-working="' + agentId + '"]');
+    if (line) line.textContent = t("chat.working", { name: agentName(agentById(agentId)) }) + (text ? " · " + text : "");
+  }
+  const workingLine = id => {
+    const x = tasks.find(y => y.agentId === id && y.chat && y.status === "doing");
+    const line = el("div", "cw-sys demo", t("chat.working", { name: agentName(agentById(id)) }) + (x && x.stepText ? " · " + x.stepText : ""));
+    line.dataset.working = id;
+    return line;
+  };
+
   function myMsg(text) {
     const row = el("div", "cmsg me");
     const txt = el("div", "txt");
@@ -313,7 +351,8 @@ const ChatUI = (() => {
 
     const log = $("chat-log");
     log.replaceChildren();
-    if (isGroup) {
+    // 示范对话里的员工都还在时才显示（自建的办公室没有这些员工）
+    if (isGroup && DEMO[LANG].every(m => (!m.a || agentExists(m.a)) && (!m.plan || m.plan.every(p => agentExists(p[0]))))) {
       log.append(el("div", "cw-sys demo", t("chat.demo")));
       for (const m of DEMO[LANG]) {
         if (m.me) log.append(myMsg(m.me));
@@ -329,7 +368,7 @@ const ChatUI = (() => {
       for (const m of dm.group) {
         if (m.sys) log.append(el("div", "cw-sys", m.sys));
         else if (m.plan) log.append(realPlanCard(m));
-        else log.append(m.me ? myMsg(m.text) : agentMsg(agentById(m.a) || AGENTS[0], m.text, m.tag));
+        else log.append(m.me ? myMsg(m.text) : agentMsg(agentById(m.a) || AGENTS[0], m.text, m.tag, m.task));
       }
       if (talk) {
         const note = el("div", "cw-sys demo talk-status", talk.typing ? t("chat.talk.typing", { name: agentName(agentById(talk.typing)) }) : "");
@@ -339,7 +378,7 @@ const ChatUI = (() => {
         note.append(stop);
         log.append(note);
       }
-      for (const id in busy) if (busy[id] === "group") log.append(el("div", "cw-sys demo", t("chat.working", { name: agentName(agentById(id)) })));
+      for (const id in busy) if (busy[id] === "group") log.append(workingLine(id));
     } else if (!isGroup) {
       const list = dm[space] || [];
       if (unread[space]) { unread[space] = 0; saveDm(); badge(); }
@@ -350,9 +389,9 @@ const ChatUI = (() => {
         empty.append(av, document.createTextNode(t("chat.dm.empty", { name: agentName(a) })));
         log.append(empty);
       }
-      for (const m of list) log.append(m.me ? myMsg(m.text) : agentMsg(a, m.text, m.question ? "chat.tag.question" : null));
+      for (const m of list) log.append(m.me ? myMsg(m.text) : agentMsg(a, m.text, m.question ? "chat.tag.question" : null, m.task));
       if (waiting[space]) log.append(el("div", "cw-sys demo", t("chat.waiting", { name: agentName(a) })));
-      else if (busy[space]) log.append(el("div", "cw-sys demo", t("chat.working", { name: agentName(a) })));
+      else if (busy[space]) log.append(workingLine(space));
       else if (list.length && list[list.length - 1].me) log.append(el("div", "cw-sys", t("chat.dm.noted")));
     }
     log.scrollTop = log.scrollHeight;
@@ -450,5 +489,5 @@ const ChatUI = (() => {
     render();
   }
 
-  return { init, open, close, toggle, render, ask, tell, isOpen: () => geo.open && !geo.min };
+  return { init, open, close, toggle, render, ask, tell, isOpen: () => geo.open && !geo.min, progress };
 })();

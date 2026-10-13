@@ -170,7 +170,7 @@ function editFile(root, rel, oldText, newText) {
 }
 
 function readNotes(root) {
-  try { return fs.readFileSync(path.join(root, NOTES_FILE), "utf8").slice(-3000).trim(); } catch (_) { return ""; }
+  try { return fs.readFileSync(path.join(root, NOTES_FILE), "utf8").slice(-8000).trim(); } catch (_) { return ""; }
 }
 function addNote(root, who, note) {
   const file = path.join(root, NOTES_FILE);
@@ -184,8 +184,11 @@ function systemPrompt(req, notes, ext) {
   for (const x of ext || []) (byConn[x.connectorName] = byConn[x.connectorName] || []).push(x.def.function.name);
   const lang = req.lang === "zh" ? "Simplified Chinese" : "English";
   return [
-    `You are ${req.agentName}, the ${req.agentRole} on a small software team. You do real work: you read and change real files in the user's project folder using the tools provided.`,
-    req.brief ? "Your job on this team: " + req.brief : "",
+    `You are ${req.agentName}, the ${req.agentRole} on a small team. You do real work: you read and change real files in the user's working folder using the tools provided.`,
+    req.purpose ? "What this team does (written by the user): " + req.purpose : "",
+    req.brief ? "Your job on this team (written by the user — follow it):\n" + req.brief : "",
+    (req.skills || []).length ? "Your skills: " + req.skills.join(", ") + "." : "",
+    req.refs ? "Reference material the user gave you for your work (use it when relevant):\n" + req.refs : "",
     req.caps && req.caps.commands
       ? "What this team can do right now: list, search, read, edit and write text files in the project folder, and run shell commands inside it (Windows cmd) — so you can run tests, scripts and command-line tools" + (req.caps.blender ? ", including Blender in background mode: \"" + req.caps.blender + "\" -b --python yourscript.py" : "") + ". Nobody can click through graphical editors. Verify your work by actually running it when that is possible."
       : "What this team can do right now: only list, search, read, edit and write text files in the project folder. The user has NOT authorized running commands, so nobody can run code, install software or use tools such as Unity or Blender. Choose technologies that work from plain text files (for example HTML/CSS/JavaScript that runs by opening a file).",
@@ -220,11 +223,12 @@ function systemPrompt(req, notes, ext) {
     "- When you are done, call the finish tool.",
     `- Write the summary, and any documents intended for the user, in ${lang}.`,
     req.scope ? "- Files you may write in your role: " + req.scope.hint + ". Anything else belongs to a teammate — hand it off instead of writing it yourself." : "",
-    req.team ? "Your teammates (id: role) — these are the ONLY people on the team, do not invent others: " + req.team : "",
+    req.team ? "Your teammates (id: name, role) — these are the ONLY people on the team, do not invent others. When you hand off, use the id: " + req.team : "",
     req.allowHandoff
       ? "- Handoff: when you call finish, decide whether the user's ORIGINAL request is fully satisfied by your work. If the user asked to build, make, implement or fix something and your part alone does not deliver it (for example you only wrote the plan or the design), you MUST set handoff_to to the teammate who should do the next real step and describe it in handoff_task. If the user asked only for your kind of output (only a plan, only a review, only a document), set handoff_to to 'none'. The user approves every handoff."
       : "- Do not propose a handoff; set handoff_to to 'none'.",
     notes ? "Shared team notes for this project (written by you and your teammates in earlier tasks — trust them, and keep them up to date with remember):\n" + notes : "",
+    req.memory ? "Earlier work in this project that looks related to this task (from the team's memory — check the files before relying on it, they may have changed since):\n" + req.memory : "",
   ].filter(Boolean).join("\n");
 }
 
@@ -237,7 +241,7 @@ async function decideHandoff(req, deps, src, messages, summary) {
     (req.brief ? "Your job description: " + req.brief + " " : "") +
     "The designer is only needed when the product has a user interface people look at (screens, web pages, app windows, game visuals). For a command-line tool, script, API, library, background service, data processing or a document, skip the designer and go straight to the developer. " +
     "Answer needed=false if the user asked only for your kind of output (only a plan, only a document, only a review with nothing that must be fixed), or the request is fully satisfied. Do not hand off just to keep a pipeline going. " +
-    "Teammates (id: role): " + req.team }]);
+    "Teammates (id: name, role): " + req.team }]);
   const r = await deps.call(src, "/chat/completions", { model: src.model, messages: ask, tools: [DECIDE_TOOL], tool_choice: { type: "function", function: { name: "handoff_decision" } }, temperature: 0, max_tokens: 400 });
   const call = r.ok && r.data && r.data.choices && r.data.choices[0] && r.data.choices[0].message && (r.data.choices[0].message.tool_calls || [])[0];
   if (!call) return null;   // 这个来源不支持强制调用工具，或出错：保守地不交接
@@ -274,6 +278,33 @@ function strength(model) {
   return score;
 }
 
+// 聊天里这句话是在提问（而不是让员工动手改东西）
+const QUESTION = /[?？]|怎么|什么|为什么|哪|吗\s*$|\b(how|what|why|where|which|who|can you explain)\b/i;
+
+// 名字看起来是小模型（快、省额度）：flash / lite / mini / small / nano，或参数量不超过 20B
+const looksLight = model => /\b(flash|lite|mini|small|nano|haiku|instant)\b/i.test(String(model)) ||
+  (m => !!m && Number(m[1]) <= 20)(String(model).toLowerCase().match(/(\d+(?:\.\d+)?)b\b/));
+
+// 把 AI 池展开成「来源 × 模型」的候选列表，按这次活的轻重排好顺序，去掉暂时用不了的。
+// weight = "strong"（做任务、群聊总结、写员工）：标成「强」的来源优先，最强的模型先用。
+// weight = "light"（聊天回复、群聊发言）：标成「轻」的来源优先，同一家里小模型先用，把大模型的免费额度留给重活。
+// 用户没把任何来源标成「轻」时，轻活也只是先挑各家的小模型，挑不到就照常用大的。
+async function buildPool(deps, weight) {
+  const all = [];
+  for (const [order, s] of deps.sources().filter(x => x.enabled && x.model).entries()) {
+    const alts = deps.alts ? await deps.alts(s) : [];
+    for (const m of [s.model].concat(alts)) all.push(Object.assign({}, s, { model: m, coolKey: s.id + "|" + m, order }));
+  }
+  const light = weight === "light";
+  const tierRank = s => ((s.tier === "light") === light ? 0 : 1);
+  all.sort((a, b) => tierRank(a) - tierRank(b) ||
+    (light ? (looksLight(a.model) ? 0 : 1) - (looksLight(b.model) ? 0 : 1) : 0) ||
+    strength(b.model) - strength(a.model) || a.order - b.order);
+  const now = Date.now();
+  const ready = all.filter(s => (deps.coolUntil ? deps.coolUntil(s.coolKey) : coolUntil.get(s.coolKey) || 0) <= now);
+  return { all, pool: ready.length ? ready : all };   // 全都在冷却就都试一遍
+}
+
 // 把带工具调用的对话记录改写成纯文字，这样换到另一家的模型也能接着看懂之前做了什么
 function flatten(messages) {
   for (let i = 0; i < messages.length; i++) {
@@ -294,22 +325,11 @@ const transient = r => r.error === "timeout" || r.status === 503 || r.status ===
 async function runAgent(req, deps) {
   const root = req.projectDir;
   if (!root || !fs.existsSync(root)) return { ok: false, error: "no-project" };
-  // 池子按顺序展开：每个来源先用选定的模型，再用同一家的备用模型，然后才是下一家
-  const all = [];
-  const enabled = deps.sources().filter(x => x.enabled && x.model);
-  for (const [order, s] of enabled.entries()) {
-    const alts = deps.alts ? await deps.alts(s) : [];
-    for (const m of [s.model].concat(alts)) all.push(Object.assign({}, s, { model: m, coolKey: s.id + "|" + m, order }));
-  }
+  // 聊天里只是提问是轻活；让员工动手（改文件、做东西）和正式任务是重活
+  const { all, pool } = await buildPool(deps, req.chat && QUESTION.test(req.title) ? "light" : "strong");
   if (!all.length) return { ok: false, error: "no-ai" };
-  // 最强的模型先用：按型号估一个强弱分，同分时按用户排的来源顺序
-  all.sort((a, b) => strength(b.model) - strength(a.model) || a.order - b.order);
   const label = s => s.name + " · " + String(s.model).split("/").pop();
-  const now = Date.now();
-  const isCool = key => (deps.coolUntil ? deps.coolUntil(key) : coolUntil.get(key) || 0) > now;
   const cool = (key, ms) => { if (deps.cool) deps.cool(key, Date.now() + ms); else coolUntil.set(key, Date.now() + ms); };
-  const ready = all.filter(s => !isCool(s.coolKey));
-  const pool = ready.length ? ready : all;   // 全都在冷却就都试一遍
 
   const history = (req.history || []).slice(-8).map(m => ({ role: m.me ? "user" : "assistant", content: String(m.text || "").slice(0, 1500) }));
   // 连接器提供的工具（开始这个任务时已经连上的那些）
@@ -333,7 +353,7 @@ async function runAgent(req, deps) {
   };
   // 岗位范围：不是自己职责内的文件不能写，只能交接
   const outOfScope = rel => req.scope && !req.scope.allow.some(p => new RegExp(p, "i").test(rel));
-  const scopeMessage = rel => "Not allowed: changing " + rel + " is outside your job. In your role you may only write " + req.scope.hint + ". Do not try another path for the same content. Finish your own part, then hand off to the teammate whose job this is (for code: developer).";
+  const scopeMessage = rel => "Not allowed: changing " + rel + " is outside your job. In your role you may only write " + req.scope.hint + ". Do not try another path for the same content. Finish your own part, then hand off to the teammate whose job this is.";
 
   for (let step = 1; step <= MAX_STEPS; step++) {
     if (deps.cancelled && deps.cancelled()) return { ok: false, error: "cancelled", files };
@@ -366,7 +386,7 @@ async function runAgent(req, deps) {
     if (!calls.length) {
       const text = String(reply.content || "").trim();
       // 模型没调用工具就回了话：聊天时这就是回答；干活时要已经有产出（写过文件、跑过命令）才算总结
-      if (text && req.chat && !files.length && !commands && !honesty && !/[?？]|怎么|什么|为什么|哪|吗\s*$|\b(how|what|why|where|which|who|can you explain)\b/i.test(req.title)) {
+      if (text && req.chat && !files.length && !commands && !honesty && !QUESTION.test(req.title)) {
         honesty = 1;
         messages.push({ role: "user", content: "Check: you have not changed any file in this conversation turn. If the user asked for a change, make it now with edit_file or write_file. If no change is actually needed, say plainly that you changed nothing and why. Never say you changed something you did not change." });
         continue;
@@ -448,7 +468,7 @@ async function runAgent(req, deps) {
           if (!command) result = "Error: empty command.";
           else if (DENY.some(re => re.test(command))) { deps.emit({ type: "denied", path: command }); result = "This command is blocked for safety and was not run."; }
           else if (req.localOnly && reachesOutside(command, req.targets)) { deps.emit({ type: "denied", path: command }); result = "Blocked and not run: in your role you may only test this project on this computer (localhost)" + ((req.targets || []).length ? " and the authorized targets (" + req.targets.join(", ") + ")" : "") + ". Do not try another way to reach a different host; continue by reading the code."; }
-          else if (req.mode !== "full" && !(await deps.ask({ kind: "command", path: command }))) { deps.emit({ type: "denied", path: command }); result = "The user declined to run this command. Do not retry it; continue without it or finish."; }
+          else if ((req.mode !== "full" || req.external) && !(await deps.ask({ kind: "command", path: command }))) { deps.emit({ type: "denied", path: command }); result = "The user declined to run this command. Do not retry it; continue without it or finish."; }
           else {
             deps.emit({ type: "run", path: command });
             result = await runCommand(root, command);
@@ -459,7 +479,7 @@ async function runAgent(req, deps) {
           // 连接器的工具：除了「完全访问」模式或用户设了免询问，每次使用前都先问
           const x = extByName.get(name);
           const what = x.connectorName + " · " + x.tool + " " + JSON.stringify(args).slice(0, 300);
-          if (req.mode !== "full" && !x.trusted && !(await deps.ask({ kind: "tool", path: what }))) {
+          if (((req.mode !== "full" && !x.trusted) || req.external) && !(await deps.ask({ kind: "tool", path: what }))) {
             deps.emit({ type: "denied", path: what });
             result = "The user declined this tool call. Do not retry it; continue without it or finish.";
           } else {
@@ -488,25 +508,19 @@ const PLAN_TOOL = fn("propose_plan", "Give the conclusion of the discussion and 
 }, ["summary", "tasks"]);
 
 async function discuss(req, deps) {
-  const all = [];
-  const enabled = deps.sources().filter(x => x.enabled && x.model);
-  for (const [order, s] of enabled.entries()) {
-    const alts = deps.alts ? await deps.alts(s) : [];
-    for (const m of [s.model].concat(alts)) all.push(Object.assign({}, s, { model: m, coolKey: s.id + "|" + m, order }));
-  }
+  // 群聊里每人说几句是轻活；最后的总结和任务清单是重活
+  const { all, pool } = await buildPool(deps, req.mode === "plan" ? "strong" : "light");
   if (!all.length) return { ok: false, error: "no-ai" };
-  all.sort((a, b) => strength(b.model) - strength(a.model) || a.order - b.order);
-  const now = Date.now();
-  const ready = all.filter(s => (deps.coolUntil ? deps.coolUntil(s.coolKey) : 0) <= now);
-  const pool = ready.length ? ready : all;
 
   const lang = req.lang === "zh" ? "Simplified Chinese" : "English";
   const plan = req.mode === "plan";
-  const CAN_DO = "Important fact about this team: it works only by reading and writing text files in a project folder" + (req.commands ? " and running command-line tools" : "") +
-    ". Nobody can use graphical editors such as Unity, Godot's editor, Unreal or Blender's interface. So only suggest technologies that work from plain files, for example a browser game in HTML/CSS/JavaScript.";
+  const CAN_DO = (req.purpose ? "What this team does: " + req.purpose + " " : "") +
+    "Important fact about this team: it works only by reading and writing text files in a working folder" + (req.commands ? " and running command-line tools" : "") +
+    ". Nobody can operate graphical apps (game editors such as Unity or Godot, design tools, office suites, social media sites). Only suggest work this team can actually produce that way — for software, technologies that run from plain files, such as a browser app in HTML/CSS/JavaScript.";
+  const isSoftware = /(^|; )designer: /.test(req.team || "") && /(^|; )developer: /.test(req.team || "");
   const system = plan
     ? "You are " + req.agentName + ", the " + req.agentRole + ". The team just discussed the user's topic in a group chat. Wrap it up: give the conclusion and the concrete next tasks, using the propose_plan tool. " +
-      CAN_DO + " Only include tasks that are really needed and that this team can actually do. Keep the first version small enough to build right away. Order the tasks in the sequence they must happen (plan, design, code, test, review). The designer is only needed when the product has a user interface people look at (screens, web pages, app windows, game visuals). For a command-line tool, script, API, library, background service, data processing or a document, skip the designer and go straight to the developer. Teammates (id: role): " + req.team + ". Write in " + lang + "."
+      CAN_DO + " Only include tasks that are really needed and that this team can actually do. Keep the first version small enough to build right away. Order the tasks in the sequence they must happen" + (isSoftware ? " (plan, design, code, test, review)" : "") + ". " + (isSoftware ? "The designer is only needed when the product has a user interface people look at (screens, web pages, app windows, game visuals). For a command-line tool, script, API, library, background service, data processing or a document, skip the designer and go straight to the developer. " : "") + "Teammates (id: name, role): " + req.team + ". Write in " + lang + "."
     : "You are " + req.agentName + ", the " + req.agentRole + ", in your team's group chat. " + (req.brief ? "Your job: " + req.brief + " " : "") +
       CAN_DO + " The user raised a topic and the team is discussing it. Say what matters from YOUR role's point of view: a concrete suggestion, a risk, or a question that must be settled. " +
       "React to what teammates already said — agree, disagree or build on it, and you may address someone as @name. Do not repeat points already made. " +
@@ -550,4 +564,75 @@ async function discuss(req, deps) {
   return { ok: false, error: "all-sources-failed", detail: last };
 }
 
-module.exports = { discuss, runAgent, readFile, resolveInside, readNotes, NOTES_FILE, strength, reachesOutside };
+// ---- 用 AI 帮用户写员工 / 搭办公室：一句话描述 -> 完整的设置和职责说明 ----
+const AGENT_PROPS = {
+  name: str("Short name for this AI teammate, in the user's language (2-6 characters for Chinese, one or two words for English)"),
+  role: str("Job title, a few words"),
+  color: str("A hex color like #4c8fd9 that suits the role"),
+  skills: { type: "array", items: { type: "string" }, description: "3-5 short skill tags" },
+  keywords: { type: "array", items: { type: "string" }, description: "6-12 words a user might type in a task meant for this teammate (in the user's language, plus English)" },
+  instructions: str("The full job description in Markdown, addressed to the teammate as 'you'. Cover: what you are responsible for; what you deliver and as which files (folder and file names); how to do the work well, step by step; the quality bar and what to avoid; when to ask the user a question; when to hand off and to whom."),
+};
+const AGENT_TOOL = fn("define_agent", "Define one AI teammate.", AGENT_PROPS, ["name", "role", "skills", "keywords", "instructions"]);
+const OFFICE_TOOL = fn("define_office", "Define a whole AI office: what it does, its teams and their teammates.", {
+  purpose: str("One or two sentences: what this office does and for whom"),
+  teams: { type: "array", description: "2 to 4 teams", items: { type: "object", properties: {
+    name: str("Team name"), color: str("Hex color for the team"),
+    agents: { type: "array", description: "2 to 4 teammates", items: { type: "object", properties: AGENT_PROPS, required: ["name", "role", "skills", "keywords", "instructions"] } },
+  }, required: ["name", "agents"] } },
+}, ["purpose", "teams"]);
+
+async function compose(req, deps) {
+  const { all, pool } = await buildPool(deps, "strong");
+  if (!all.length) return { ok: false, error: "no-ai" };
+  const lang = req.lang === "zh" ? "Simplified Chinese" : "English";
+  const office = req.kind === "office";
+  const facts = "Facts about how these AI teammates work: each one is an AI model that can only read and write text files (Markdown, code, data) in the user's working folder, ask the user questions, " +
+    "hand work to a teammate, and — only if the user allows it — run command-line tools or use connectors the user added (for example reading web pages). They cannot click through apps or websites, post to social media, send email, or make images or video. " +
+    "So every deliverable must be a text file, for example drafts/2026-10-post.md. Write the instructions so the teammate produces real, finished, usable work, not advice about the work.";
+  const system = (office
+    ? "You design AI offices. The user describes what they want; you define the office with the define_office tool: a clear purpose, 2-4 teams, 2-4 teammates per team, each with a distinct job. Make the first teammate of the first team the coordinator who plans work and splits it among the others. "
+    : "You write job descriptions for AI teammates. The user describes the teammate they want; you define it with the define_agent tool. ") +
+    facts + (req.purpose ? " What the user's office does: " + req.purpose : "") + (req.team ? " Existing teammates (id: name, role): " + req.team + "." : "") +
+    " Write every name, role, skill and instruction in " + lang + ".";
+  const tool = office ? OFFICE_TOOL : AGENT_TOOL;
+  const body = {
+    messages: [{ role: "system", content: system }, { role: "user", content: String(req.text || "").slice(0, 2000) }],
+    tools: [tool], tool_choice: { type: "function", function: { name: tool.function.name } }, temperature: 0.4, max_tokens: office ? 8000 : 3000,
+  };
+  let last = "unknown";
+  for (const src of pool) {
+    const r = await deps.call(src, "/chat/completions", Object.assign({ model: src.model }, body));
+    const call = r.ok && r.data && r.data.choices && r.data.choices[0] && r.data.choices[0].message && (r.data.choices[0].message.tool_calls || [])[0];
+    if (call) {
+      try {
+        const a = JSON.parse(call.function.arguments || "null");
+        if (a && (office ? Array.isArray(a.teams) && a.teams.length : a.name && a.instructions)) return { ok: true, source: src.name + " · " + String(src.model).split("/").pop(), result: a };
+        last = "incomplete answer";
+      } catch (_) { last = "bad answer"; }
+    } else {
+      last = r.ok ? "no answer" : (r.status ? r.status + " " : "") + (r.error || "bad response");
+      if (deps.cool && !r.ok) {
+        if (r.status === 404 || r.status === 401 || r.status === 403) deps.cool(src.coolKey, Date.now() + 24 * 3600000);
+        else if (r.status === 429) deps.cool(src.coolKey, Date.now() + (/rate limit|per minute|try again in|too many requests/i.test(r.error || "") ? 60000 : 3600000));
+      }
+    }
+  }
+  return { ok: false, error: "all-sources-failed", detail: last };
+}
+
+async function summarizeNotes(text, deps) {
+  const { pool } = await buildPool(deps, "light");
+  const body = { messages: [
+    { role: "system", content: "You maintain a team's shared project notes. Rewrite the notes below to be concise: merge duplicates, drop facts that later notes contradict or that are clearly outdated, and keep every fact that is still useful (chosen technologies, how to run things, conventions, decisions, known problems). Keep the '- [who] fact' line format and the original language. Output only the notes." },
+    { role: "user", content: text.slice(-20000) },
+  ], temperature: 0.1, max_tokens: 3000 };
+  for (const src of pool) {
+    const r = await deps.call(src, "/chat/completions", Object.assign({ model: src.model }, body));
+    const msg = r.ok && r.data && r.data.choices && r.data.choices[0] && r.data.choices[0].message;
+    if (msg && msg.content && String(msg.content).trim()) return String(msg.content).trim();
+  }
+  return "";
+}
+
+module.exports = { summarizeNotes, buildPool, looksLight, compose, discuss, runAgent, readFile, resolveInside, readNotes, NOTES_FILE, strength, reachesOutside };

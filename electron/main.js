@@ -5,8 +5,10 @@
 const { app, BrowserWindow, ipcMain, dialog, Notification, shell, safeStorage } = require("electron");
 const path = require("path");
 const fs = require("fs");
-const { runAgent, discuss, readFile, resolveInside, readNotes, strength } = require("./agent");
+const { runAgent, discuss, compose, summarizeNotes, readFile, resolveInside, readNotes, strength } = require("./agent");
 const mcp = require("./mcp");
+const office = require("./office");
+const memory = require("./memory");
 
 const CONFIG_FILE = () => path.join(app.getPath("userData"), "config.json");
 let win = null;
@@ -36,6 +38,9 @@ function createWindow() {
     },
   });
   win.loadFile(path.join(__dirname, "..", "index.html"));
+  // 开发用：--size=宽x高，测试小窗口下的布局
+  const sizeArg = process.argv.find(x => /^--size=\d+x\d+$/.test(x));
+  if (sizeArg) { const [w, h] = sizeArg.slice(7).split("x").map(Number); win.setSize(w, h); }
   const headlessTest = process.argv.some(a => a.startsWith("--screenshot="));
   win.once("ready-to-show", () => { if (process.argv.includes("--hidden")) return; if (headlessTest) win.showInactive(); else win.show(); });
 
@@ -72,6 +77,7 @@ ipcMain.on("window-control", (e, action) => {
   if (action === "minimize") w.minimize();
   else if (action === "maximize") { if (w.isMaximized()) w.unmaximize(); else w.maximize(); }
   else if (action === "close") w.close();
+  else if (action === "reload") w.webContents.reload();   // 改了办公室结构后重搭 3D 场景（页面自己的 location.reload 会被防跳转拦下）
 });
 
 ipcMain.on("notify", (_e, title, body) => {
@@ -318,12 +324,40 @@ ipcMain.handle("conn:remove", (_e, id) => {
   return { ok: true };
 });
 
+// ---- 办公室和员工：存成文件（见 office.js），用户可以增删改 ----
+const userDir = () => app.getPath("userData");
+const wrap = fn => { try { return fn(); } catch (e) { return { ok: false, error: String(e.message || e) }; } };
+ipcMain.handle("office:load", () => wrap(() => office.load(userDir())));
+ipcMain.handle("office:write", (_e, change) => wrap(() => office.write(userDir(), change || {})));
+ipcMain.handle("office:removeRef", (_e, id, name) => wrap(() => office.removeRef(userDir(), id, name)));
+ipcMain.handle("office:addRefText", (_e, id, name, text) => wrap(() => office.addRef(userDir(), id, name, text)));
+// 用系统的选择文件窗口挑 .md / .txt：作为参考资料放进某个员工，或作为新员工导入
+async function pickTextFiles(e, multi) {
+  const r = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender), {
+    properties: multi ? ["openFile", "multiSelections"] : ["openFile"], filters: [{ name: "Markdown", extensions: ["md", "txt"] }],
+  });
+  if (r.canceled) return [];
+  return r.filePaths.slice(0, 20).map(p => ({ name: path.basename(p), text: fs.readFileSync(p, "utf8").slice(0, 200 * 1024) }));
+}
+ipcMain.handle("office:addRefFiles", async (e, id) => {
+  try {
+    let refs = null;
+    for (const f of await pickTextFiles(e, true)) refs = office.addRef(userDir(), id, f.name, f.text);
+    return { ok: true, refs };
+  } catch (err) { return { ok: false, error: String(err.message || err) }; }
+});
+ipcMain.handle("office:pickFiles", async e => { try { return { ok: true, files: await pickTextFiles(e, true) }; } catch (err) { return { ok: false, error: String(err.message || err) }; } });
+ipcMain.handle("office:openDir", () => { const d = office.dirs(userDir()).root; fs.mkdirSync(d, { recursive: true }); shell.openPath(d); return d; });
+
 // 查看项目文件夹里的文件（任务详情页用）
 ipcMain.handle("files:read", (_e, rel) => {
   if (!config.projectDir) return { ok: false, error: "no-project" };
   try { return { ok: true, text: readFile(config.projectDir, rel) }; } catch (e) { return { ok: false, error: String(e.message || e) }; }
 });
 ipcMain.handle("files:notes", () => (config.projectDir ? readNotes(config.projectDir) : ""));
+ipcMain.handle("files:memory", () => (config.projectDir ? { count: memory.historyCount(config.projectDir) } : { count: 0 }));
+// 出错时用默认值：记忆只是辅助，不能因为它让任务失败
+function safe(fn, fallback) { try { return fn(); } catch (_) { return fallback; } }
 ipcMain.handle("files:reveal", (_e, rel) => {
   if (!config.projectDir) return false;
   try { shell.showItemInFolder(resolveInside(config.projectDir, rel)); return true; } catch (_) { return false; }
@@ -410,7 +444,11 @@ ipcMain.handle("agent:run", async (e, req) => {
     const res = await runAgent({
       projectDir: config.projectDir, title: String(req.title || "").slice(0, 2000),
       agentName: String(req.agentName || "Agent").slice(0, 60), agentRole: String(req.agentRole || "").slice(0, 80),
-      brief: String(req.brief || "").slice(0, 1000), context: String(req.context || "").slice(0, 3000), origin: String(req.origin || "").slice(0, 600),
+      brief: String(req.brief || "").slice(0, 8000), context: String(req.context || "").slice(0, 3000),
+      skills: Array.isArray(req.skills) ? req.skills.slice(0, 20).map(s => String(s).slice(0, 60)) : [],
+      refs: req.agentId ? office.refsText(userDir(), String(req.agentId)) : "",
+      purpose: String(req.purpose || "").slice(0, 2000), external: !!req.external,
+      memory: config.projectDir ? safe(() => memory.memoryText(config.projectDir, String(req.title || "") + " " + String(req.origin || "")), "") : "", origin: String(req.origin || "").slice(0, 600),
       team: String(req.team || "").slice(0, 800), allowHandoff: !!req.allowHandoff, caps: currentCaps(),
       chat: !!req.chat, history: Array.isArray(req.history) ? req.history.slice(-8) : [],
       scope: req.scope && Array.isArray(req.scope.allow) ? { allow: req.scope.allow.slice(0, 20).map(String), hint: String(req.scope.hint || "").slice(0, 200) } : null,
@@ -442,6 +480,14 @@ ipcMain.handle("agent:run", async (e, req) => {
         send(Object.assign({ type: "ask", askId: id }, question));
       }),
     });
+    // 记进项目记忆（聊天里只回答问题、什么都没动的不记）；笔记太长时在后台整理
+    if (config.projectDir && (!req.chat || (res.files || []).length) && res.error !== "cancelled") {
+      safe(() => memory.appendHistory(config.projectDir, { agent: req.agentName, role: req.agentRole, title: req.title, summary: res.summary || res.detail || res.error, files: res.files, ok: res.ok && !res.blocked }));
+      memory.compactNotes(config.projectDir, text => summarizeNotes(text, {
+        sources: () => config.sources || [], alts: altModels, call: (source, pathname, body) => callSource(source, pathname, body, 90000),
+        coolUntil: key => (config.cool && config.cool[key]) || 0,
+      })).catch(() => { /* 整理失败就保持原样，下次再试 */ });
+    }
     return Object.assign(res, { usage: spent });
   } catch (err) {
     return { ok: false, error: "crash", detail: String(err.message || err), usage: spent };
@@ -466,14 +512,28 @@ ipcMain.handle("agent:say", async (_e, req) => {
   try {
     return await discuss({
       mode: req.mode === "plan" ? "plan" : "turn", agentName: String(req.agentName || "").slice(0, 60), agentRole: String(req.agentRole || "").slice(0, 80),
-      brief: String(req.brief || "").slice(0, 600), topic: String(req.topic || "").slice(0, 1000), transcript: String(req.transcript || "").slice(0, 8000),
-      team: String(req.team || "").slice(0, 800), lang: req.lang, commands: !!config.caps.commands,
+      brief: String(req.brief || "").slice(0, 1500), topic: String(req.topic || "").slice(0, 1000), transcript: String(req.transcript || "").slice(0, 8000),
+      team: String(req.team || "").slice(0, 2000), lang: req.lang, commands: !!config.caps.commands, purpose: String(req.purpose || "").slice(0, 2000),
     }, {
       sources: () => config.sources || [], alts: altModels,
       call: (source, pathname, body) => callSource(source, pathname, body, 60000),
       coolUntil: key => (config.cool && config.cool[key]) || 0,
       cool: (key, until) => { config.cool = config.cool || {}; config.cool[key] = until; saveConfig(); },
       cancelled: () => talkCancelled,
+    });
+  } catch (err) { return { ok: false, error: "crash", detail: String(err.message || err) }; }
+});
+
+// 用 AI 帮用户写员工 / 搭办公室
+ipcMain.handle("agent:compose", async (_e, req) => {
+  req = req || {};
+  try {
+    return await compose({ kind: req.kind === "office" ? "office" : "agent", text: String(req.text || "").slice(0, 2000), lang: req.lang,
+      purpose: String(req.purpose || "").slice(0, 2000), team: String(req.team || "").slice(0, 2000) }, {
+      sources: () => config.sources || [], alts: altModels,
+      call: (source, pathname, body) => callSource(source, pathname, body, 120000),
+      coolUntil: key => (config.cool && config.cool[key]) || 0,
+      cool: (key, until) => { config.cool = config.cool || {}; config.cool[key] = until; saveConfig(); },
     });
   } catch (err) { return { ok: false, error: "crash", detail: String(err.message || err) }; }
 });

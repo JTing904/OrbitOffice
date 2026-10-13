@@ -17,7 +17,13 @@
   const BRAIN_POS = [0, 2.4, 0];
   const ISLAND_W = 8.8, ISLAND_D = 6.4;   // 岛的宽和进深（与 Blender 模型一致）
   // 岛内（局部）工位坐标：两人一岛或三人一岛
-  const DESK_LAYOUTS = { 1: [[0, -1.4]], 2: [[-2.2, -1.4], [2.2, -1.4]], 3: [[-2.9, -1.4], [0, -1.4], [2.9, -1.4]] };
+  const DESK_LAYOUTS = {
+    1: [[0, -1.4]], 2: [[-2.2, -1.4], [2.2, -1.4]], 3: [[-2.9, -1.4], [0, -1.4], [2.9, -1.4]],
+    4: [[-3.3, -1.4], [-1.1, -1.4], [1.1, -1.4], [3.3, -1.4]],
+    5: [[-2.9, -1.4], [0, -1.4], [2.9, -1.4], [-1.6, 0.9], [1.6, 0.9]],
+    6: [[-2.9, -1.4], [0, -1.4], [2.9, -1.4], [-2.9, 0.9], [0, 0.9], [2.9, 0.9]],
+  };
+  const MAX_PER_ISLAND = 6;
   const SEAT_DZ = 1.05;       // 椅子在桌子前方的距离
   const LANE_Z = 0.9;         // 岛内通往休息区的走道
   const SPEED = 2.4;          // 走路速度（单位/秒）
@@ -60,7 +66,7 @@
   let tween = null;             // 镜头飞行动画
   const teamEls = {};           // teamId -> { name, cnt }
   let HOME_POS = [0, 30, 27];
-  const HOME_TARGET = [0, 0.3, 0];
+  let HOME_TARGET = [0, 0.3, 0];
   let brain, brainEl, brainKey = "";
   const inset = { x: 0, y: 0, tx: 0, ty: 0 };   // 被界面遮挡的区域（右侧抽屉、底部指令栏），场景会平滑避让
 
@@ -195,7 +201,7 @@
       const local = (b.x - a.x) * Math.cos(a.angle) - (b.z - a.z) * Math.sin(a.angle);   // b 在 a 的左边还是右边
       return islandPoint(a, Math.sign(local) * (ISLAND_W / 2 + 0.1), 0);
     };
-    for (let i = 0; i < islands.length; i++) {
+    for (let i = 0; i < (islands.length < 3 ? islands.length - 1 : islands.length); i++) {
       const a = islands[i], b = islands[(i + 1) % islands.length];
       addLink(side(a, b), side(b, a), "#8fa0d8", 0.3, 1);
     }
@@ -213,7 +219,8 @@
     const D = ISLAND_D;
 
     // 平台、地砖、发光边框、后墙、岩石底（Blender 模型），按团队色换色
-    const island = inst(models["island_" + team.id] ? "island_" + team.id : "island_product");   // 每个团队一种不同的办公室
+    const style = ["island_" + team.style, "island_" + team.id].find(k => models[k]) || "island_product";
+    const island = inst(style);   // 每个团队一种办公室；自建的团队可以选用哪一种
     tint(island, {
       TileA: mix(col, 0x10142a, 0.7), TileB: mix(col, 0x10142a, 0.78), Side: mix(col, 0x0d1022, 0.65),
       Wall: mix(col, 0x10142a, 0.6), WallTrim: mix(col, 0x0a0d1a, 0.8), Rim: new THREE.Color(col),
@@ -241,8 +248,10 @@
 
     const isl = { id: team.id, x: px, z: pz, angle, color: team.color, group: g, phase: idx * 2.1, spots: SPOT_DEFS.map(p => Object.assign({ taken: null }, p)) };
     islands.push(isl);
-    const desks = DESK_LAYOUTS[Math.min(members.length, 3)] || DESK_LAYOUTS[3];
+    const desks = DESK_LAYOUTS[Math.min(members.length, MAX_PER_ISLAND)] || DESK_LAYOUTS[1];
     members.slice(0, desks.length).forEach((a, i) => buildStation(a, isl, desks[i][0], desks[i][1]));
+    // 人多时（两排桌子）走道被第二排挡住：大家坐着不去休息区
+    if (members.length > 3) for (const a of members) if (states[a.id]) states[a.id].noWander = true;
   }
 
   function drawScreen(s, t) {
@@ -320,7 +329,7 @@
   // 关节是模型里的空节点：Body 整体、Head 头、ArmL/R 肩、HipL/R 髋、KneeL/R 膝；坐下时 Body 下移 0.34，大腿水平、小腿垂下。
   function makeCharacter(agent) {
     const group = inst("character");
-    const look = LOOKS[agent.id] || { acc: [], hair: 0x2b2118 };
+    const look = agent.look || LOOKS[agent.id] || { acc: [], hair: 0x2b2118 };
     const mats = tint(group, { Shirt: agent.color, Hair: new THREE.Color(look.hair) });
     for (const name of ACCESSORIES) group.getObjectByName(name).visible = look.acc.includes(name);
     const node = name => group.getObjectByName(name);
@@ -367,7 +376,7 @@
     // 决策
     if (s.mode === "seated") {
       if (s.want || s.waiting) s.idleTimer = 6 + Math.random() * 10;
-      else if ((s.idleTimer -= dt) <= 0) startWander(s);
+      else if (!s.noWander && (s.idleTimer -= dt) <= 0) startWander(s);
     } else if (s.want && !s.returning && s.mode !== "sit") {
       goHome(s);
     }
@@ -504,20 +513,31 @@
 
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(40, 1.5, 0.1, 200);
-    // 四座岛：每 90° 一座（顺序绕一圈，相邻的岛才连线），离大脑远一点免得挤，镜头也跟着拉远
-    if (teams.length >= 4) {
-      ISLAND_ANGLES = [-3 * Math.PI / 4, 3 * Math.PI / 4, Math.PI / 4, -Math.PI / 4];
-      ISLAND_RADIUS = 13.5;
-      HOME_POS = [0, 44, 40];
-    }
+    // 岛的摆法：三座、四座用调好的角度；其余数量均匀排一圈（按角度从小到大，相邻的岛才连线）。
+    // 半径保证相邻两座岛之间至少留出约 4 个单位的空隙；镜头按半径拉远。
+    const n = Math.max(1, teams.length);
+    if (n === 3) ISLAND_ANGLES = [-2 * Math.PI / 3, 2 * Math.PI / 3, 0];
+    else if (n === 4) ISLAND_ANGLES = [-3 * Math.PI / 4, 3 * Math.PI / 4, Math.PI / 4, -Math.PI / 4];
+    else if (n === 1) ISLAND_ANGLES = [0];
+    else if (n === 2) ISLAND_ANGLES = [-Math.PI / 2, Math.PI / 2];
+    else ISLAND_ANGLES = Array.from({ length: n }, (_, i) => -Math.PI + (i + 0.5) * 2 * Math.PI / n);
+    ISLAND_RADIUS = n === 1 ? 8 : n === 2 ? 10.5 : Math.max(10.5, 3.2 + (4 + (ISLAND_W / 2) * Math.cos(Math.PI / n)) / Math.sin(Math.PI / n));
+    if (n === 4) ISLAND_RADIUS = 13.5;
+    const zoom = 1 + Math.max(0, ISLAND_RADIUS - 10.5) / 10.5 * 1.6;
+    // 镜头对准大脑稍后方一点：后排的岛离顶栏远一些，头顶的标签放得下
+    HOME_TARGET = [0, 0.3, -Math.max(0, ISLAND_RADIUS - 10.5) * 0.9];
+    HOME_POS = [0, 30 * zoom, 27 * zoom + HOME_TARGET[2]];
     camera.position.set(...HOME_POS);
+    camera.far = Math.max(200, HOME_POS[1] * 4);
+    camera.updateProjectionMatrix();
 
     scene.add(new THREE.HemisphereLight(0x9db4ff, 0x1a1f3a, 0.7));
     const sun = new THREE.DirectionalLight(0xdfe6ff, 0.65);
     sun.position.set(-8, 20, 10);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
-    Object.assign(sun.shadow.camera, { left: -27, right: 27, top: 24, bottom: -24, near: 1, far: 90 });
+    const span = ISLAND_RADIUS + 13;
+    Object.assign(sun.shadow.camera, { left: -span, right: span, top: span - 3, bottom: -span + 3, near: 1, far: 60 + span * 2 });
     scene.add(sun);
 
     buildWorld();
@@ -530,7 +550,7 @@
     controls.enablePan = false;
     controls.enableDamping = true;
     controls.minDistance = 8;
-    controls.maxDistance = 60;
+    controls.maxDistance = Math.max(60, Math.hypot(HOME_POS[1], HOME_POS[2]) * 1.4);
     controls.maxPolarAngle = 1.35;
 
     // 点击员工：区分点击与拖拽
@@ -607,11 +627,13 @@
     s.ring.material.color.setHex(c);
     s.dirty = true;
   };
+  let selectedId = null;
   O.setSelected = function (id) {
+    selectedId = id;
     for (const k in states) states[k].ring.visible = k === id;
   };
   O.getLayout = function () {
-    return { islands: islands.map(i => ({ id: i.id, x: i.x, z: i.z, color: i.color })), brain: { x: BRAIN_POS[0], z: BRAIN_POS[2] } };
+    return { radius: ISLAND_RADIUS, islands: islands.map(i => ({ id: i.id, x: i.x, z: i.z, color: i.color })), brain: { x: BRAIN_POS[0], z: BRAIN_POS[2] } };
   };
   // 镜头飞到某座岛 / 大脑 / 全景
   O.focus = function (which) {
@@ -627,6 +649,67 @@
       toP: target.clone().add(offset), toT: target,
     };
   };
+
+  // ---- 员工标签：放在头顶，互相重叠时往上叠成一列 ----
+  // 先放重要的（等你回复的、选中的、正在干活的、离镜头近的），后放的遇到重叠就挪到挡住它的标签上面；
+  // 挪得太远还放不下的闲置标签先隐藏。标签大小每半秒量一次（每帧都量会拖慢渲染）。
+  const labelSize = {};
+  let sizeAt = 0, topLimit = 122;
+  function placeLabels(w, h, fixed) {
+    const now = performance.now();
+    const remeasure = now - sizeAt > 500;
+    if (remeasure) {
+      sizeAt = now;
+      // 顶栏（中间那排标签页）下面才算可用区域：按它实际的位置算，窗口大小变了也对
+      const bar = document.getElementById("tabs");
+      topLimit = bar ? Math.max(40, bar.getBoundingClientRect().bottom - container.getBoundingClientRect().top + 8) : 122;
+    }
+    const items = [];
+    for (const id in labels) {
+      const s = states[id];
+      if (!s) continue;
+      s.group.getWorldPosition(tmp);
+      tmp.y += 2.45 + 0.35 * (1 - s.sit);
+      const p = project(tmp.clone(), w, h);
+      const el = labels[id];
+      if (!p.visible) { el.style.display = "none"; continue; }
+      if (remeasure || !labelSize[id]) {
+        if (el.style.display === "none") el.style.display = "";
+        el.classList.remove("mini");   // 按完整大小量
+        labelSize[id] = { w: el.offsetWidth || LABEL_HALF_W * 2, h: el.offsetHeight || 36 };
+      }
+      const size = labelSize[id];
+      const half = size.w / 2;
+      const cls = el.classList;
+      const prio = cls.contains("waiting") ? 4 : id === selectedId ? 3 : cls.contains("working") ? 2 : 1;
+      items.push({ id, el, prio, depth: tmp.distanceToSquared(camera.position), w: size.w, h: size.h,
+        x: Math.min(w - half - 4, Math.max(half + 4, p.x)),   // 不超出画面左右边缘
+        y: Math.max(p.y, topLimit + 6) });                     // 留出顶栏的高度
+    }
+    items.sort((a, b) => b.prio - a.prio || a.depth - b.depth);
+    const placed = (fixed || []).slice();
+    const hit = (x, y, it) => placed.find(r => x - it.w / 2 < r.r && x + it.w / 2 > r.l && y - it.h < r.b && y > r.t);
+    const TOP = topLimit;
+    const fits = (it, y, other) => !other && it.y - y <= 120 && y - it.h >= TOP;
+    const settle = it => { let y = it.y, tries = 0, other; while ((other = hit(it.x, y, it)) && tries < 6) { y = other.t - 3; tries++; } return { y, other }; };
+    for (const it of items) {
+      let { y, other } = settle(it);
+      // 闲置的放不下：先缩成只有头像的小圆点再试；还放不下才隐藏。正在干活的一定显示，停在顶栏下面
+      let mini = false;
+      if (it.prio === 1 && !fits(it, y, other)) {
+        mini = true;
+        Object.assign(it, { w: 26, h: 26 });
+        ({ y, other } = settle(it));
+      }
+      it.el.classList.toggle("mini", mini);
+      const hidden = it.prio === 1 && !fits(it, y, other);
+      it.el.style.display = hidden ? "none" : "";
+      if (hidden) continue;
+      if (y - it.h < TOP) y = TOP + it.h;
+      placed.push({ l: it.x - it.w / 2, r: it.x + it.w / 2, t: y - it.h, b: y });
+      it.el.style.transform = `translate(${it.x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%)`;
+    }
+  }
 
   // ---- 主循环 ----
   function project(worldPos, w, h) {
@@ -688,25 +771,19 @@
     controls.update();
     renderer.render(scene, camera);
 
-    for (const id in labels) {
-      const s = states[id];
-      if (!s) continue;
-      s.group.getWorldPosition(tmp);
-      tmp.y += 2.45 + 0.35 * (1 - s.sit);
-      const p = project(tmp.clone(), w, h);
-      const el = labels[id];
-      // 标签不超出画面左右边缘（员工走到岛边时也能看全）
-      const x = Math.min(w - LABEL_HALF_W - 4, Math.max(LABEL_HALF_W + 4, p.x));
-      const y = Math.max(p.y, 128);   // 留出顶栏的高度
-      el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%)`;
-      el.style.display = p.visible ? "" : "none";
-    }
+    // 组名、大脑这些固定标签先放，员工标签再绕开它们
+    const fixed = [];
     for (const a of anchors) {
       tmp.copy(a.off);
       a.obj.localToWorld(tmp);
       const p = project(tmp.clone(), w, h);
       a.el.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) translate(-50%, ${a.below ? "0" : "-100%"})`;
       a.el.style.display = p.visible ? "" : "none";
+      if (!p.visible) continue;
+      if (!a.size || performance.now() - sizeAt > 500) a.size = { w: a.el.offsetWidth, h: a.el.offsetHeight };
+      const top = a.below ? p.y : p.y - a.size.h;
+      fixed.push({ l: p.x - a.size.w / 2, r: p.x + a.size.w / 2, t: top, b: top + a.size.h });
     }
+    placeLabels(w, h, fixed);
   }
 })();

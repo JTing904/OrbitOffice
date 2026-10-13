@@ -123,6 +123,7 @@ const UI = (() => {
   }
 
   function teamPill(team) {
+    if (!TEAMS.includes(team)) return document.createTextNode("");   // 员工已被删除、所属的组也不在了
     const p = el("span", "team-pill");
     p.style.setProperty("--tc", team.color);
     p.append(el("i"), document.createTextNode(teamName(team)));
@@ -229,6 +230,10 @@ const UI = (() => {
     const notesText = el("div", "td-text", t("brain.notes.none"));
     notes.append(el("span", "eyebrow", t("brain.notes")), notesText);
     if (window.desktop && desktop.files && desktop.files.notes) desktop.files.notes().then(text => { if (text) notesText.textContent = text; });
+    // 项目记忆：这个项目里记住了多少次工作（员工接新任务时会从里面找相关的）
+    const memLine = el("p", "set-note brain-memory");
+    if (window.desktop && desktop.files && desktop.files.memory) desktop.files.memory().then(m => { memLine.textContent = t("brain.memory", { n: m.count }); });
+    notes.append(memLine);
     v.append(head, notes, q, filters, list);
     renderFilters();
     brainSig = "";
@@ -410,9 +415,11 @@ const UI = (() => {
       row(t("set.mode"), seg(MODE_IDS.map(m => [m, t("mode." + m)]), mode, setMode)),
     );
 
+    // 桌面 App：办公室和员工存成 .md 文件，可以增删改（office-ui.js）；浏览器里只能改名字、岗位、颜色、技能
     const agents = section("set.agents");
-    agents.append(el("p", "set-note", t("set.agentsNote")));
-    for (const a of AGENTS) {
+    if (window.desktop && desktop.office && typeof OfficeUI !== "undefined") OfficeUI.build(agents);
+    else agents.append(el("p", "set-note", t("set.agentsNote")));
+    for (const a of (window.desktop && desktop.office ? [] : AGENTS)) {
       const r = el("div", "agent-row");
       r.dataset.id = a.id;
 
@@ -517,7 +524,7 @@ const UI = (() => {
     const kbd = (k, label) => row(label, el("kbd", null, k));
     keys.append(kbd("Ctrl J", t("set.sc.chat")), kbd("Ctrl K", t("set.sc.palette")), kbd("Esc", t("set.sc.close")), kbd("F11", t("set.sc.full")));
 
-    v.append(general, project, caps, conn, ai, agents, data, keys);
+    v.append(general, agents, project, caps, conn, ai, data, keys);
   }
 
   const AI_PRESETS = [
@@ -661,7 +668,7 @@ const UI = (() => {
       scanRow.append(button("ghost small", t("set.ai.scan"), async () => { await api.scan(s.id); setTimeout(showScan, 500); }), scanText);
       showScan();
       const adv = el("details", "src-adv");
-      adv.append(el("summary", null, t("set.ai.advanced")), line("set.ai.url", url), line("set.ai.model", modelRow), line("set.ai.tier", tier), line("set.ai.scan.label", scanRow), line("set.ai.order", order));
+      adv.append(el("summary", null, t("set.ai.advanced")), line("set.ai.url", url), line("set.ai.model", modelRow), line("set.ai.tier", tier), el("p", "set-note src-tier-note", t("set.ai.tier.note")), line("set.ai.scan.label", scanRow), line("set.ai.order", order));
       c.append(head, line("set.ai.key", keyRow), status, el("p", "set-status usage-line", usageLine(s.id)), adv);
       if (!s.needsKey) keyRow.replaceChildren(button("ghost small", t("set.ai.connect"), autoSetup));
       if (s.hasKey && s.model) say("set.ai.s.saved", { model: s.model }); else if (s.needsKey && !s.hasKey) say("set.ai.s.nokey");
@@ -869,8 +876,8 @@ const UI = (() => {
     input.hidden = !req.input;
     input.value = "";
     input.placeholder = t("ask.placeholder");
-    $("ask-yes").textContent = t(req.input ? "ask.answer" : "ask.allow");
-    $("ask-no").textContent = t(req.input ? "ask.skip" : "ask.deny");
+    $("ask-yes").textContent = req.yes || t(req.input ? "ask.answer" : "ask.allow");
+    $("ask-no").textContent = req.no || t(req.input ? "ask.skip" : "ask.deny");
     const done = ok => {
       $("ask").classList.remove("open");
       $("ask").setAttribute("aria-hidden", "true");
@@ -916,7 +923,8 @@ const UI = (() => {
     box.hidden = !in3d;
     if (!in3d) return;
     const lay = Office3D.getLayout();
-    const X0 = -16, X1 = 16, Z0 = -14, Z1 = 22;
+    const R = (lay.radius || 10.5) + 5.5;
+    const X0 = -R, X1 = R, Z0 = -R * 0.88, Z1 = R * 1.38;
     const pos = (x, z) => [((x - X0) / (X1 - X0)) * 100, ((z - Z0) / (Z1 - Z0)) * 100];
     for (const isl of lay.islands) {
       const tm = teamById(isl.id);
