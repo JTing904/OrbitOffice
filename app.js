@@ -1,6 +1,6 @@
 "use strict";
 
-// MyAIOffice 核心逻辑：员工与任务数据、模拟工作循环、主界面渲染。
+// OrbitOffice 核心逻辑：员工与任务数据、模拟工作循环、主界面渲染。
 // 界面面板（员工面板、大脑、设置、指令面板、提示条、小地图）在 ui.js；文字在 i18n.js。
 
 // ---- 数据：员工、团队、交接链 ----
@@ -434,10 +434,10 @@ function clearData() {
   render(true);
 }
 function exportData() {
-  const data = { app: (window.desktop && desktop.appName) || "MyAIOffice", version: 3, exportedAt: new Date().toISOString(), lang: LANG, mode, edits, tasks, logs };
+  const data = { app: (window.desktop && desktop.appName) || "OrbitOffice", version: 3, exportedAt: new Date().toISOString(), lang: LANG, mode, edits, tasks, logs };
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
-  a.download = "myaioffice-export.json";
+  a.download = "orbitoffice-export.json";
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }

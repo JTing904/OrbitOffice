@@ -1,4 +1,4 @@
-// 打包成可双击运行的 Windows 程序：dist/MyAIOffice/MyAIOffice.exe
+// 打包成可双击运行的 Windows 程序（免安装）：dist/<产品名>/<产品名>.exe
 // 做法：复制 Electron 运行时，改名，再把 App 文件放进 resources/app。不需要安装器。
 // 用法：node tools/build-app.js
 const fs = require("fs");
@@ -6,7 +6,7 @@ const path = require("path");
 
 const root = path.join(__dirname, "..");
 const runtime = path.join(root, "node_modules", "electron", "dist");
-const NAME = require(path.join(root, "package.json")).productName || "MyAIOffice";
+const NAME = require(path.join(root, "package.json")).productName || "OrbitOffice";
 const out = path.join(root, "dist", NAME);
 const appDir = path.join(out, "resources", "app");
 

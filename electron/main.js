@@ -1,6 +1,6 @@
 "use strict";
 
-// MyAIOffice 桌面外壳：无边框窗口、自定义标题栏、系统通知、项目文件夹选择。
+// OrbitOffice 桌面外壳：无边框窗口、自定义标题栏、系统通知、项目文件夹选择。
 // 渲染进程（index.html）不开 Node 权限，只能通过 preload.js 暴露的 window.desktop 调用这里的功能。
 const { app, BrowserWindow, ipcMain, dialog, Notification, shell, safeStorage } = require("electron");
 const path = require("path");

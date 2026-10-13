@@ -1,6 +1,6 @@
 {
-  "name": "myaioffice",
-  "productName": "MyAIOffice",
+  "name": "orbitoffice",
+  "productName": "OrbitOffice",
   "version": "0.1.0",
   "description": "A 3D office for your AI team",
   "private": true,
@@ -17,7 +17,7 @@
     "electron-builder": "^25.1.8"
   },
   "build": {
-    "appId": "io.github.jting904.myaioffice",
+    "appId": "io.github.jting904.orbitoffice",
     "directories": {
       "output": "dist/installer",
       "buildResources": "assets/icon"

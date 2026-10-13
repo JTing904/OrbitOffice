@@ -1,4 +1,4 @@
-# AgentHive
+# OrbitOffice
 
 **A 3D office for your AI team.** Describe the work, and a team of AI agents plans it, does it, checks each other's work and hands it on — writing real files in a folder you choose. You watch them at their desks, chat with them, and approve what matters.
 
@@ -13,8 +13,8 @@ It ships with a ready-made software team, but the team is just a set of Markdown
 - **Build your own office.** Each agent is a `.md` file: settings at the top, the job description below. Add, edit, import or drag in agents and offices — or describe what you need in one sentence and let the AI draft the whole office.
 - **Group discussion.** Raise a topic in the group chat; several agents discuss it from their own roles, then the lead sums up and proposes tasks you can start in order with one click.
 - **Project memory.** Every finished piece of work is recorded in the project folder. Before a new task, agents look up related earlier work and read the team's shared notes, which are summarized automatically when they grow long.
-- **Free AI pool.** Add API keys from several providers (Google Gemini, NVIDIA NIM, Groq, OpenRouter, a local Ollama, or any OpenAI-compatible endpoint). AgentHive tests every model, uses the strongest for real work and lighter ones for chat, and switches automatically when a quota runs out.
-- **Built-in local AI.** No key and no internet needed: AgentHive checks your GPU, RAM and disk, recommends an open model (Qwen3.5, 2B to 35B) that runs well on your machine, and downloads and runs it in one click. No Ollama required.
+- **Free AI pool.** Add API keys from several providers (Google Gemini, NVIDIA NIM, Groq, OpenRouter, a local Ollama, or any OpenAI-compatible endpoint). OrbitOffice tests every model, uses the strongest for real work and lighter ones for chat, and switches automatically when a quota runs out.
+- **Built-in local AI.** No key and no internet needed: OrbitOffice checks your GPU, RAM and disk, recommends an open model (Qwen3.5, 2B to 35B) that runs well on your machine, and downloads and runs it in one click. No Ollama required.
 - **You stay in control.** Three permission modes (Manual, Auto, Full access), per-role write limits, a block list for dangerous commands, and approval prompts before anything risky. Keys are stored encrypted on your computer and never shown in full.
 
 ## Getting started
@@ -31,7 +31,7 @@ Click any agent or task to see exactly what happened: every file read or written
 
 ## Writing an agent
 
-Agents live in `%APPDATA%/myaioffice/office/agents/` (Settings → Offices & agents → Open folder). A minimal agent:
+Agents live in `%APPDATA%/OrbitOffice/office/agents/` (`%APPDATA%/myaioffice/...` if you used an early version) (Settings → Offices & agents → Open folder). A minimal agent:
 
 ```markdown
 ---

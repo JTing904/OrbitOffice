@@ -6,7 +6,7 @@ const { spawn } = require("child_process");
 const os = require("os");
 
 const PROTOCOL = "2025-06-18";
-const CLIENT = { name: require("../package.json").productName || "MyAIOffice", version: require("../package.json").version };
+const CLIENT = { name: require("../package.json").productName || "OrbitOffice", version: require("../package.json").version };
 const MAX_TOOLS = 40;          // 交给模型的工具总数上限：太多的话弱一点的模型会选不准
 const MAX_RESULT = 20000;
 
