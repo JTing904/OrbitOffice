@@ -51,6 +51,9 @@ const DECIDE_TOOL = fn("handoff_decision", "State whether a teammate must act no
 const DENY = [/\brm\s+-rf?\s+[\/~]/i, /\bformat\s+[a-z]:/i, /\b(shutdown|reboot|restart-computer|stop-computer)\b/i, /\bdel\s+\/[sq].*[a-z]:\\(?!users)/i,
   /\brd\s+\/s.*[a-z]:\\?\s*$/i, /\breg\s+(delete|add)\b/i, /\bdiskpart\b/i, /\bcipher\s+\/w/i, /\bnet\s+user\b/i, /\bschtasks\b/i, /:\(\)\s*\{/];
 
+// 用你的账号对外发布或改动线上内容的命令：任何模式（包括完全访问）都先问你
+const ALWAYS_ASK = /\bgit\s+push\b|\bgit\s+tag\s+-d\b|\bgh\s+(release|pr\s+(create|merge|close)|issue\s+(create|close|comment)|repo\s+(create|delete|edit|rename|archive)|secret|gist\s+create|api\s+.*-X\s*(POST|PUT|PATCH|DELETE))\b|\b(npm|pnpm|yarn)\s+publish\b|\bdocker\s+push\b|\bvercel\b.*--prod\b|\bnetlify\s+deploy\b.*--prod\b|\btwine\s+upload\b|\bcargo\s+publish\b/i;
+
 // 只许碰本机的岗位（攻击者）：拦下会连到别人机器上的命令。这只是一道护栏，不是沙箱——脚本里自己发起的连接拦不住，
 // 所以除了「完全访问」模式，每条命令运行前仍然要用户同意。
 const ATTACK_TOOLS = /\b(nmap|masscan|zmap|sqlmap|hydra|medusa|nikto|msfconsole|msfvenom|metasploit|hping3?|aircrack(-ng)?|ettercap|bettercap|responder|gobuster|dirb|ffuf|wfuzz|nuclei|wpscan|netcat|ncat|nc)\b/i;
@@ -311,17 +314,30 @@ async function buildPool(deps, weight) {
 }
 
 // 把带工具调用的对话记录改写成纯文字，这样换到另一家的模型也能接着看懂之前做了什么
+// 注意：不能写成模型自己说过的话（例如「我调用了某某工具」）——新模型会照着这个格式用文字「假装」调用工具，
+// 什么都不会发生。所以把做过的步骤和结果整理成一条「进度记录」，放在用户那一侧。
 function flatten(messages) {
-  for (let i = 0; i < messages.length; i++) {
-    const m = messages[i];
+  const out = [];
+  let note = null;
+  for (const m of messages) {
     if (m.role === "assistant" && m.tool_calls) {
-      const calls = m.tool_calls.map(c => "[I called " + (c.function && c.function.name) + " with " + String((c.function && c.function.arguments) || "").slice(0, 800) + "]").join("\n");
-      messages[i] = { role: "assistant", content: (m.content ? m.content + "\n" : "") + calls };
+      if (m.content && String(m.content).trim()) { out.push({ role: "assistant", content: m.content }); note = null; }   // 说过的话之后另起一条记录，保持先后顺序
+      if (!note) { note = { role: "user", content: "Progress record from the app (steps already carried out earlier in this task, by tools):" }; out.push(note); }
+      for (const c of m.tool_calls) note.content += "\n- Step: " + (c.function && c.function.name) + " " + String((c.function && c.function.arguments) || "").slice(0, 600);
     } else if (m.role === "tool") {
-      messages[i] = { role: "user", content: "[Tool result]\n" + m.content };
+      if (!note) { note = { role: "user", content: "Progress record from the app:" }; out.push(note); }
+      note.content += "\n  Result: " + String(m.content || "");
+    } else {
+      note = null;
+      out.push(m);
     }
   }
+  if (out.length && out[out.length - 1] === note) note.content += "\nContinue the task from here, using the tools.";
+  messages.splice(0, messages.length, ...out);
 }
+
+// 模型用文字写出了「调用工具」的样子，却没有真的调用（换模型后偶尔会这样）
+const FAKE_CALL = /^\s*\[(I called|Step:|Tool call)\b|^\s*I called \w+_\w+\b.*\bwith\b|<tool_call>|"(name|function)"\s*:\s*"[a-z_]+(__[a-z_-]+)?"\s*,\s*"arguments"|\b\w+__\w+\s+with\s*\{/i;
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const transient = r => r.error === "timeout" || r.status === 503 || r.status === 502 || r.status === 500 || r.status === 529;
@@ -346,7 +362,7 @@ async function runAgent(req, deps) {
   }]);
   const files = [];
   const tools = TOOLS.concat(ASK_TOOL, req.caps && req.caps.commands ? [RUN_TOOL] : [], ext.map(x => x.def));
-  let sourceIndex = 0, lastError = "unknown", nudges = 0, commands = 0, questions = 0, looked = 0, honesty = 0;
+  let sourceIndex = 0, lastError = "unknown", fakeCalls = 0, nudges = 0, commands = 0, questions = 0, looked = 0, honesty = 0;
 
   const conclude = async res => {
     res.source = label(pool[Math.min(sourceIndex, pool.length - 1)]);
@@ -392,6 +408,17 @@ async function runAgent(req, deps) {
 
     if (!calls.length) {
       const text = String(reply.content || "").trim();
+      // 用文字假装调用工具：不算回答，提醒它真的调用（提醒两次，再不行就换下一个模型）
+      if (text && FAKE_CALL.test(text)) {
+        fakeCalls++;
+        if (fakeCalls <= 2) { messages.push({ role: "user", content: "You wrote a tool call as plain text. Text does not run anything. Call the tool through the tool-calling interface instead, or, if the work is finished, give your final summary." }); continue; }
+        deps.emit({ type: "switch", from: label(pool[sourceIndex]), error: "fake tool calls" });
+        sourceIndex++;
+        fakeCalls = 0;
+        flatten(messages);
+        if (sourceIndex >= pool.length) return { ok: false, error: "empty-reply", detail: text.slice(0, 200), files };
+        continue;
+      }
       // 模型没调用工具就回了话：聊天时这就是回答；干活时要已经有产出（写过文件、跑过命令）才算总结
       if (text && req.chat && !files.length && !commands && !honesty && !QUESTION.test(req.title)) {
         honesty = 1;
@@ -475,7 +502,7 @@ async function runAgent(req, deps) {
           if (!command) result = "Error: empty command.";
           else if (DENY.some(re => re.test(command))) { deps.emit({ type: "denied", path: command }); result = "This command is blocked for safety and was not run."; }
           else if (req.localOnly && reachesOutside(command, req.targets)) { deps.emit({ type: "denied", path: command }); result = "Blocked and not run: in your role you may only test this project on this computer (localhost)" + ((req.targets || []).length ? " and the authorized targets (" + req.targets.join(", ") + ")" : "") + ". Do not try another way to reach a different host; continue by reading the code."; }
-          else if ((req.mode !== "full" || req.external) && !(await deps.ask({ kind: "command", path: command }))) { deps.emit({ type: "denied", path: command }); result = "The user declined to run this command. Do not retry it; continue without it or finish."; }
+          else if ((req.mode !== "full" || req.external || ALWAYS_ASK.test(command)) && !(await deps.ask({ kind: "command", path: command }))) { deps.emit({ type: "denied", path: command }); result = "The user declined to run this command. Do not retry it; continue without it or finish."; }
           else {
             deps.emit({ type: "run", path: command });
             result = await runCommand(root, command);
