@@ -1,0 +1,342 @@
+:root {
+    --bg: #0a0f1c;
+    --fg: #e0e7ff;
+    --muted: #94a3b8;
+    --accent-cyan: #22d3ee;
+    --accent-violet: #8b5cf6;
+    --gradient: linear-gradient(135deg, var(--accent-cyan), var(--accent-violet));
+    --card-bg: rgba(15, 23, 42, 0.6);
+    --card-border: rgba(34, 211, 238, 0.15);
+    --radius: 12px;
+    --transition: 0.3s ease;
+}
+
+/* Starry background */
+body {
+    margin: 0;
+    font-family: 'Inter', system-ui, sans-serif;
+    background-color: var(--bg);
+    color: var(--fg);
+    line-height: 1.6;
+    position: relative;
+    overflow-x: hidden;
+}
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: 
+        radial-gradient(circle at 20% 30%, rgba(34,211,238,0.15) 0%, transparent 25%),
+        radial-gradient(circle at 80% 70%, rgba(139,92,246,0.15) 0%, transparent 25%),
+        radial-gradient(circle at 40% 40%, rgba(34,211,238,0.1) 0%, transparent 20%),
+        radial-gradient(circle at 60% 20%, rgba(139,92,246,0.1) 0%, transparent 20%),
+        radial-gradient(circle at 90% 80%, rgba(34,211,238,0.05) 0%, transparent 15%),
+        radial-gradient(circle at 10% 90%, rgba(139,92,246,0.05) 0%, transparent 15%);
+    background-repeat: repeat;
+    animation: twinkle 8s ease-in-out infinite alternate;
+    pointer-events: none;
+    z-index: -2;
+}
+@keyframes twinkle {
+    to { opacity: 0.8; }
+}
+
+/* Container */
+.container {
+    width: 90%;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1rem;
+    box-sizing: border-box;
+}
+
+/* Typography */
+h1, h2, h3 {
+    margin-top: 0;
+    margin-bottom: 1rem;
+    line-height: 1.2;
+}
+h1 { font-size: 2.2rem; font-weight: 700; }
+h2 { font-size: 1.8rem; font-weight: 600; }
+h3 { font-size: 1.4rem; font-weight: 600; }
+p { margin: 0 0 1rem; }
+
+/* Buttons */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    font-weight: 500;
+    border: none;
+    border-radius: var(--radius);
+    cursor: pointer;
+    text-decoration: none;
+    transition: var(--transition);
+    font-size: 1rem;
+}
+.btn-primary {
+    background: var(--gradient);
+    color: var(--bg);
+    box-shadow: 0 4px 12px rgba(34,211,238,0.3);
+}
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(34,211,238,0.4);
+}
+.btn-secondary {
+    background: var(--card-bg);
+    color: var(--fg);
+    border: 1px solid var(--card-border);
+}
+.btn-secondary:hover {
+    background: rgba(15,23,42,0.8);
+    transform: translateY(-2px);
+}
+
+/* Hero */
+.hero {
+    text-align: center;
+    padding: 6rem 0 4rem;
+    position: relative;
+}
+.hero .logo {
+    width: 80px;
+    height: auto;
+    margin-bottom: 1.5rem;
+    filter: drop-shadow(0 0 8px rgba(34,211,238,0.4));
+}
+.hero h1 {
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
+    background: var(--gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+.hero p {
+    color: var(--muted);
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+    margin-bottom: 2rem;
+    font-size: 1.1rem;
+}
+.hero-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+.hero-image {
+    width: 100%;
+    border-radius: var(--radius);
+    box-shadow: 0 0 20px rgba(34,211,238,0.4);
+    margin-top: 2rem;
+}
+
+/* How it works */
+.how-it-works {
+    padding: 4rem 0;
+    background: rgba(15,23,42,0.2);
+}
+.how-it-works h2 {
+    text-align: center;
+    margin-bottom: 2.5rem;
+    color: var(--fg);
+}
+.steps {
+    display: grid;
+    gap: 2rem;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+.step {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    transition: var(--transition);
+    display: flex;
+    flex-direction: column;
+}
+.step:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    border-color: rgba(34,211,238,0.25);
+}
+.step-img {
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    object-fit: cover;
+}
+.step-content {
+    padding: 1.5rem 1.5rem 2rem;
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+}
+.step-content h3 {
+    margin-top: 0;
+    margin-bottom: 0.75rem;
+    color: var(--fg);
+}
+.step-content p {
+    color: var(--muted);
+    flex-grow: 1;
+}
+
+/* Features */
+.features {
+    padding: 4rem 0;
+}
+.features h2 {
+    text-align: center;
+    margin-bottom: 2.5rem;
+}
+.grid {
+    display: grid;
+    gap: 1.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+.card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+    transition: var(--transition);
+}
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+    border-color: rgba(34,211,238,0.2);
+}
+.card h3 {
+    margin-top: 0;
+    margin-bottom: 0.75rem;
+    color: var(--fg);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.card h3::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    background: var(--gradient);
+    border-radius: 50%;
+}
+.card p {
+    color: var(--muted);
+    font-size: 0.95rem;
+}
+
+/* FAQ */
+.faq {
+    padding: 4rem 0;
+    background: rgba(15,23,42,0.2);
+}
+.faq h2 {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+.faq details {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius);
+    margin-bottom: 1rem;
+    padding: 0;
+}
+.faq summary {
+    padding: 1.25rem 1.5rem;
+    font-weight: 600;
+    color: var(--fg);
+    cursor: pointer;
+    list-style: none;
+    position: relative;
+}
+.faq summary::-webkit-details-marker {
+    display: none;
+}
+.faq summary::after {
+    content: "▸";
+    position: absolute;
+    right: 1.5rem;
+    transition: transform var(--transition);
+}
+.faq details[open] summary::after {
+    transform: rotate(90deg);
+}
+.faq details[open] summary {
+    border-bottom: 1px solid var(--card-border);
+}
+.faq details p {
+    padding: 1.5rem;
+    color: var(--muted);
+    margin: 0;
+}
+
+/* Works with your AI tools */
+.works-with-ai {
+    padding: 4rem 0;
+    background: rgba(15,23,42,0.2);
+}
+.works-with-ai h2 {
+    text-align: center;
+    margin-bottom: 1.5rem;
+}
+.works-with-ai p {
+    color: var(--muted);
+    margin-bottom: 1.5rem;
+}
+.works-with-ai pre {
+    background: #000;
+    color: #f8f8f2;
+    padding: 1rem;
+    border-radius: var(--radius);
+    overflow-x: auto;
+    max-width: 100%;
+    margin: 1rem 0;
+}
+.works-with-ai code {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.9rem;
+}
+.works-with-ai .note {
+    font-size: 0.9rem;
+    color: var(--muted);
+    text-align: center;
+    margin-top: 1rem;
+}
+
+/* Footer */
+footer {
+    padding: 3rem 0 1.5rem;
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+footer p {
+    margin-bottom: 1rem;
+}
+footer a {
+    color: var(--accent-cyan);
+    text-decoration: none;
+    margin: 0 0.5rem;
+    transition: var(--transition);
+}
+footer a:hover {
+    text-decoration: underline;
+    color: var(--accent-violet);
+}
+
+/* Responsive adjustments */
+@media (max-width: 480px) {
+    h1 { font-size: 1.8rem; }
+    h2 { font-size: 1.5rem; }
+    .hero { padding: 4rem 0 2rem; }
+    .hero-buttons { flex-direction: column; align-items: stretch; }
+    .btn { width: 100%; justify-content: center; }
+}
+/* 步骤卡片里的标题和文字留出边距（HTML 没有 .step-content 这一层，直接给 .step 里的 h3、p） */
+.step > h3 { padding: 18px 20px 0; margin: 0 0 8px; }
+.step > p { padding: 0 20px 20px; margin: 0; }
