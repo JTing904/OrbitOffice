@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "remoteBridge": "npx -y mcp-remote@0.14.3",
+  "categories": [
+    { "id": "research", "zh": "资料查询", "en": "Research" },
+    { "id": "design", "zh": "设计", "en": "Design" },
+    { "id": "dev", "zh": "开发部署", "en": "Dev & deploy" },
+    { "id": "docs", "zh": "文档协作", "en": "Docs & files" },
+    { "id": "pm", "zh": "项目管理", "en": "Project management" },
+    { "id": "business", "zh": "商业运营", "en": "Business" },
+    { "id": "local", "zh": "本机工具", "en": "On this computer" }
+  ],
+  "connectors": [
+    { "id": "web-search", "category": "research", "command": "uvx duckduckgo-mcp-server", "login": false,
+      "zh": { "name": "网页搜索", "description": "上网搜索、读网页，查最新新闻和资料（DuckDuckGo，不用登录）。需要电脑上装有 uv。" },
+      "en": { "name": "Web search", "description": "Search the web and read pages for current information (DuckDuckGo, no login). Needs uv." } },
+    { "id": "context7", "category": "research", "url": "https://mcp.context7.com/mcp", "direct": true, "login": false,
+      "zh": { "name": "Context7 开发文档", "description": "查各种编程库和框架的最新官方文档和示例，不用登录。" },
+      "en": { "name": "Context7 docs", "description": "Up-to-date docs and examples for programming libraries and frameworks. No login." } },
+    { "id": "huggingface", "category": "research", "url": "https://huggingface.co/mcp", "login": false,
+      "zh": { "name": "Hugging Face", "description": "搜索开源 AI 模型、数据集和应用。" },
+      "en": { "name": "Hugging Face", "description": "Search open AI models, datasets and Spaces." } },
+    { "id": "cloudflare-docs", "category": "research", "url": "https://docs.mcp.cloudflare.com/mcp", "login": false,
+      "zh": { "name": "Cloudflare 文档", "description": "查 Cloudflare 的官方开发文档，不用登录。" },
+      "en": { "name": "Cloudflare docs", "description": "Search Cloudflare's developer documentation. No login." } },
+
+    { "id": "figma", "category": "design", "url": "https://mcp.figma.com/mcp

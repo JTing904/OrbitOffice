@@ -250,7 +250,9 @@ const UI = (() => {
     } else loadNotes("");
     const skillBox = el("section", "td-block skills");
     if (window.desktop && desktop.skills) buildSkills(skillBox);
-    v.append(head, notes, skillBox, q, filters, list);
+    const connBox = el("section", "td-block connectors");
+    if (window.desktop && desktop.connectors) { connBox.append(el("span", "eyebrow", t("set.conn"))); buildConnSettings(connBox, desktop.connectors); }
+    v.append(head, notes, skillBox, connBox, q, filters, list);
     renderFilters();
     brainSig = "";
     renderMemories();
@@ -719,8 +721,7 @@ const UI = (() => {
 
     // 连接器：接上外部工具
     const conn = section("set.conn");
-    if (d && d.connectors) buildConnSettings(conn, d.connectors);
-    else conn.append(el("p", "set-note", t("set.project.web")));
+    conn.append(el("p", "set-note", t("conn.inBrain")), button("ghost", t("conn.openBrain"), () => { open("brain"); setTimeout(() => { const c = document.querySelector("#view-brain .connectors"); if (c) c.scrollIntoView(); }, 200); }));
 
     // AI 池：NVIDIA NIM
     const ai = section("set.ai");
@@ -1043,8 +1044,9 @@ const UI = (() => {
       st.textContent = !c.enabled ? t("set.conn.s.off")
         : c.status === "ready" ? t("set.conn.s.ready", { n: c.tools.length })
         : c.status === "error" ? t("set.conn.s.error", { error: errText(c.error) })
-        : t("set.conn.s.connecting");
+        : c.online ? t("conn.s.login") : t("set.conn.s.connecting");
       node.append(head, target, st);
+      if (c.online && c.enabled) node.append(el("p", "set-note", t("conn.online")));
       if ((c.secrets || []).length) node.append(el("p", "set-status", t("set.conn.secrets", { names: c.secrets.join(", ") })));
 
       if (c.enabled) {
@@ -1089,7 +1091,57 @@ const UI = (() => {
     input.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); add(); } });
     const addRow = el("div", "set-inline src-add conn-add");
     addRow.append(preset, input, button("primary", t("set.conn.add"), add));
-    box.append(el("p", "set-note", t("set.conn.note")), list, addRow, status);
+    const storeBox = el("div");
+    let store = null;   // { cat, q } 打开时
+    const storeBtn = button("primary small", t("conn.store"), () => { store = store ? null : { cat: "all", q: "" }; drawStore(); });
+    async function drawStore() {
+      storeBox.replaceChildren();
+      if (!store || !api.store) return;
+      const { categories, connectors } = await api.store();
+      const p = el("div", "skill-store");
+      const head = el("div", "store-head");
+      const search = el("input", "set-input");
+      search.type = "search"; search.placeholder = t("conn.search"); search.value = store.q;
+      search.addEventListener("input", () => { store.q = search.value; renderItems(); });
+      head.append(el("b", null, t("conn.storeTitle")), search);
+      const chips = el("div", "filters store-cats");
+      const chip = (id, label, n) => {
+        const b = button("filter" + (store.cat === id ? " active" : ""), label + " " + n, () => { store.cat = id; chips.querySelectorAll(".filter").forEach(x => x.classList.toggle("active", x === b)); renderItems(); });
+        return b;
+      };
+      chips.append(chip("all", t("brain.all"), connectors.length));
+      for (const c of categories) chips.append(chip(c.id, c[LANG] || c.en, connectors.filter(x => x.category === c.id).length));
+      const items = el("div", "store-list");
+      const L = x => x[LANG] || x.en;
+      function renderItems() {
+        const q = store.q.trim().toLowerCase();
+        items.replaceChildren();
+        for (const x of connectors.filter(x => (store.cat === "all" || x.category === store.cat) && (!q || (L(x).name + " " + L(x).description + " " + x.id).toLowerCase().includes(q)))) {
+          const row = el("div", "store-item" + (x.installed ? " on" : ""));
+          const who = el("div", "skill-who");
+          who.append(el("b", null, L(x).name), el("span", null, L(x).description));
+          const tag = el("em", "store-cat", t(x.login ? "conn.tag.login" : "conn.tag.free"));
+          const act = x.installed
+            ? button("ghost small", t("conn.disconnect"), async () => { await api.remove(x.installed); x.installed = null; renderItems(); render(); })
+            : button("primary small", t("conn.connect"), async () => {
+              const r = await api.install(x.id, LANG);
+              if (!r.ok) return toast(t("set.conn.s.error", { error: errText(r.error) }), { kind: "warn", ttl: 8000 });
+              toast(t(x.login ? "conn.connectingLogin" : "conn.connecting", { name: L(x).name }), { kind: "ok", ttl: x.login ? 12000 : 4000 });
+              x.installed = true;
+              renderItems();
+              render();
+            });
+          row.append(who, tag, act);
+          items.append(row);
+        }
+      }
+      renderItems();
+      p.append(head, chips, items, el("p", "set-note", t("conn.storeNote")));
+      storeBox.append(p);
+    }
+    const adv = el("details", "src-adv conn-manual");
+    adv.append(el("summary", null, t("conn.manual")), addRow, status);
+    box.append(el("p", "set-note", t("set.conn.note")), storeBtn, storeBox, list, adv);
     render();
   }
 

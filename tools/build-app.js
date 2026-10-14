@@ -27,6 +27,7 @@ for (const f of ["index.html", "style.css", "app.js", "ui.js", "chat.js", "i18n.
 }
 fs.cpSync(path.join(root, "vendor"), path.join(appDir, "vendor"), { recursive: true });
 fs.cpSync(path.join(root, "skills-catalog"), path.join(appDir, "skills-catalog"), { recursive: true });
+fs.copyFileSync(path.join(root, "connectors-catalog.json"), path.join(appDir, "connectors-catalog.json"));
 fs.cpSync(path.join(root, "electron"), path.join(appDir, "electron"), { recursive: true });
 fs.mkdirSync(path.join(appDir, "assets"), { recursive: true });
 fs.copyFileSync(path.join(root, "assets", "models.js"), path.join(appDir, "assets", "models.js"));

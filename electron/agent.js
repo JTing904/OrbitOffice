@@ -533,7 +533,7 @@ async function runAgent(req, deps) {
           // 连接器的工具：除了「完全访问」模式或用户设了免询问，每次使用前都先问
           const x = extByName.get(name);
           const what = x.connectorName + " · " + x.tool + " " + JSON.stringify(args).slice(0, 300);
-          if (((req.mode !== "full" && !x.trusted) || req.external || externalSkill) && !(await deps.ask({ kind: "tool", path: what }))) {
+          if (((req.mode !== "full" && !x.trusted) || req.external || externalSkill || (x.online && !x.readOnly)) && !(await deps.ask({ kind: "tool", path: what }))) {
             deps.emit({ type: "denied", path: what });
             result = "The user declined this tool call. Do not retry it; continue without it or finish.";
           } else {

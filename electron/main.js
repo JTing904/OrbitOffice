@@ -309,16 +309,19 @@ const publicConn = c => Object.assign({}, c, mcp.status(c.id));
 const startConn = c => { if (c.enabled) mcp.connect(c, connSecret(c.id)); else mcp.stop(c.id); };
 
 ipcMain.handle("conn:list", () => config.connectors.map(publicConn));
-ipcMain.handle("conn:add", (_e, text) => {
+ipcMain.handle("conn:add", (_e, text) => addConnectors(text, {}));
+// extra：从连接器商店装的会带上 name、online（登录了线上账号）、catalogId
+function addConnectors(text, extra) {
   let found;
   try { found = mcp.parseInput(String(text || "").slice(0, 8000)); } catch (e) { return { ok: false, error: e.message }; }
   if (!found.length) return { ok: false, error: "bad-input" };
-  if (config.connectors.length + found.length > 12) return { ok: false, error: "too-many" };
+  if (config.connectors.length + found.length > 40) return { ok: false, error: "too-many" };
   for (const f of found) {
     const c = {
       id: "conn-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-      name: String(f.name || "Connector").slice(0, 40), type: f.type, command: f.command, url: f.url, enabled: true, trusted: false,
+      name: String(extra.name || f.name || "Connector").slice(0, 40), type: f.type, command: f.command, url: f.url, enabled: true, trusted: !!extra.trusted,
       secrets: Object.keys(f.secret.env || {}).concat(Object.keys(f.secret.headers || {})),
+      online: !!extra.online, catalogId: extra.catalogId || undefined,
     };
     if (c.secrets.length && !setConnSecret(c.id, f.secret)) return { ok: false, error: "encryption-unavailable" };
     config.connectors.push(c);
@@ -326,6 +329,28 @@ ipcMain.handle("conn:add", (_e, text) => {
   }
   saveConfig();
   return { ok: true, added: found.length };
+}
+
+// ---- 连接器商店（connectors-catalog.json）：官方连接器，按类别列出，一键连接 ----
+// 要登录的线上服务通过 mcp-remote 连接：它会打开浏览器让你登录并点「允许」，之后自己保存和续期授权
+const MCP_REMOTE = "npx -y mcp-remote@0.14.3";
+const connCatalog = () => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, "..", "connectors-catalog.json"), "utf8")); } catch (_) { return { categories: [], connectors: [] }; } };
+const catalogInput = e => e.command || e.url || (MCP_REMOTE + " " + e.remote);
+ipcMain.handle("conn:store", () => {
+  const cat = connCatalog();
+  return { categories: cat.categories || [], connectors: (cat.connectors || []).map(e => {
+    const input = catalogInput(e);
+    const have = config.connectors.find(c => c.catalogId === e.id || (c.command || c.url) === input);
+    return Object.assign({}, e, { installed: have ? have.id : null });
+  }) };
+});
+ipcMain.handle("conn:install", (_e, id, lang) => {
+  const e = (connCatalog().connectors || []).find(x => x.id === id);
+  if (!e) return { ok: false, error: "unknown" };
+  if (config.connectors.some(c => c.catalogId === id)) return { ok: true, added: 0 };
+  const L = e[lang === "en" ? "en" : "zh"] || e.en;
+  // 不用登录的资料查询类只是读，不用每次问；登录了线上账号的会改动你的东西，标成 online
+  return addConnectors(catalogInput(e), { name: L.name, online: !!e.login, trusted: !e.login && e.category === "search", catalogId: e.id });
 });
 ipcMain.handle("conn:update", (_e, id, patch) => {
   const c = findConn(id);

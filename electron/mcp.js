@@ -117,7 +117,7 @@ const conns = new Map();   // connector.id -> { id, name, trusted, status, error
 
 async function connect(cfg, secret) {
   stop(cfg.id);
-  const c = { id: cfg.id, name: cfg.name, trusted: !!cfg.trusted, status: "connecting", error: "", tools: [], transport: null };
+  const c = { id: cfg.id, name: cfg.name, trusted: !!cfg.trusted, online: !!cfg.online, status: "connecting", error: "", tools: [], transport: null };
   conns.set(cfg.id, c);
   const tr = cfg.type === "http" ? new Http(cfg, secret) : new Stdio(cfg, secret);
   c.transport = tr;
@@ -195,7 +195,8 @@ function agentTools() {
       const params = cleanSchema(tool.inputSchema || {});
       if (params.type !== "object") { params.type = "object"; params.properties = {}; delete params.items; delete params.enum; }
       list.push({
-        connector: c.id, connectorName: c.name, tool: tool.name, trusted: c.trusted,
+        connector: c.id, connectorName: c.name, tool: tool.name, trusted: c.trusted, online: c.online,
+        readOnly: !!(tool.annotations && tool.annotations.readOnlyHint),
         def: { type: "function", function: { name, description: ("[" + c.name + "] " + (tool.description || tool.name)).slice(0, 500), parameters: params } },
       });
     }

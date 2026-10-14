@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld("desktop", {
     update: (id, patch) => ipcRenderer.invoke("conn:update", id, patch),
     reconnect: id => ipcRenderer.invoke("conn:reconnect", id),
     remove: id => ipcRenderer.invoke("conn:remove", id),
+    store: () => ipcRenderer.invoke("conn:store"),
+    install: (id, lang) => ipcRenderer.invoke("conn:install", id, lang),
   },
   // 办公室和员工的定义文件
   office: {

@@ -37,7 +37,8 @@
       "electron/**/*",
       "assets/models.js",
       "assets/icon/icon.png",
-      "skills-catalog/**/*"
+      "skills-catalog/**/*",
+      "connectors-catalog.json"
     ],
     "win": {
       "target": [
