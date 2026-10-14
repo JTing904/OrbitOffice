@@ -348,7 +348,8 @@ function addConnectors(text, extra) {
 // 要登录的线上服务通过 mcp-remote 连接：它会打开浏览器让你登录并点「允许」，之后自己保存和续期授权
 const MCP_REMOTE = "npx -y mcp-remote@0.14.3";
 const connCatalog = () => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, "..", "connectors-catalog.json"), "utf8")); } catch (_) { return { categories: [], connectors: [] }; } };
-const catalogInput = e => e.command || e.url || (MCP_REMOTE + " " + e.remote);
+// remoteArgs：个别服务要的额外参数（例如 Gamma 只接受 localhost 回调，不接受 Windows 默认的 127.0.0.1）
+const catalogInput = e => e.command || e.url || (MCP_REMOTE + " " + e.remote + (e.remoteArgs ? " " + e.remoteArgs : ""));
 ipcMain.handle("conn:store", () => {
   const cat = connCatalog();
   return { categories: cat.categories || [], connectors: (cat.connectors || []).map(e => {

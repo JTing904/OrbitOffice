@@ -142,7 +142,7 @@ const OfficeUI = (() => {
       name.addEventListener("change", () => name.value.trim() && saveText({ name: name.value.trim() }));
       const n = AGENTS.filter(a => (deptOf(a) || {}).id === d.id).length;
       const del = btn("ghost small danger", t("office.removeTeam"), async () => {
-        if (!window.confirm(t("dept.removeConfirm", { name: d.name }))) return;
+        if (!(await UI.confirm(t("dept.removeConfirm", { name: d.name }), { danger: true, yes: t("common.delete") }))) return;
         await saveStructural({ departments: deptsPlain().filter(x => x.id !== d.id), teams: teamsPlain().map(x => x.dept === d.id ? Object.assign(x, { dept: "" }) : x) });
       });
       const head = el("div", "office-team-head");
@@ -196,7 +196,7 @@ const OfficeUI = (() => {
     const members = AGENTS.filter(a => a.team === tm.id);
     const del = btn("ghost small danger", t("office.removeTeam"), async () => {
       if (TEAMS.length <= 1) return UI.toast(t("office.e.lastTeam"), { kind: "warn" });
-      if (!window.confirm(t("office.removeTeamConfirm", { name: teamName(tm), n: members.length }))) return;
+      if (!(await UI.confirm(t("office.removeTeamConfirm", { name: teamName(tm), n: members.length }), { danger: true, yes: t("common.delete") }))) return;
       cancelTasksOf(members.map(a => a.id));
       await saveStructural({ teams: teamsPlain().filter(x => x.id !== tm.id), remove: members.map(a => a.id) });
     });
@@ -246,7 +246,7 @@ const OfficeUI = (() => {
       }),
       btn("ghost small danger", t("office.removeAgent"), async () => {
         if (AGENTS.length <= 1) return UI.toast(t("office.e.lastAgent"), { kind: "warn" });
-        if (!window.confirm(t("office.removeAgentConfirm", { name: agentName(a) }))) return;
+        if (!(await UI.confirm(t("office.removeAgentConfirm", { name: agentName(a) }), { danger: true, yes: t("common.delete") }))) return;
         cancelTasksOf([a.id]);
         await saveStructural({ remove: [a.id] });
       }));
@@ -469,7 +469,7 @@ const OfficeUI = (() => {
 
   // 把 AI 生成的办公室写成文件：替换现在的全部，或加在现在的后面
   async function applyOffice(o, replace) {
-    if (replace && !window.confirm(t("office.ai.replaceConfirm"))) return;
+    if (replace && !(await UI.confirm(t("office.ai.replaceConfirm"), { danger: true, yes: t("office.ai.replace") }))) return;
     const ids = replace ? new Set() : taken();
     const teams = replace ? [] : teamsPlain();
     const agents = [];
@@ -562,7 +562,7 @@ const OfficeUI = (() => {
   }
 
   async function useTemplate(name) {
-    if (!window.confirm(t("office.resetConfirm", { name: t("office.tpl." + name) }))) return;
+    if (!(await UI.confirm(t("office.resetConfirm", { name: t("office.tpl." + name) }), { danger: true, yes: t("office.useTemplate") }))) return;
     if (working()) return UI.toast(t("office.busy"), { kind: "warn", ttl: 9000 });
     cancelTasksOf(AGENTS.map(a => a.id));
     const r1 = await api().write({ remove: AGENTS.map(a => a.id) });

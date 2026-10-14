@@ -437,7 +437,7 @@ const UI = (() => {
             editing = { id: s.id, text: r.value };
             draw();
           }),
-          button("ghost small danger", t("office.removeAgent"), async () => { if (window.confirm(t("skill.removeConfirm", { name: s.name }))) { await api.remove(s.id); draw(); } }));
+          button("ghost small danger", t("office.removeAgent"), async () => { if (await confirmDialog(t("skill.removeConfirm", { name: s.name }), { danger: true, yes: t("common.delete") })) { await api.remove(s.id); draw(); } }));
         box.append(row);
         if (editing && editing.id === s.id) box.append(editor());
       }
@@ -769,7 +769,7 @@ const UI = (() => {
     const btns = el("div", "set-buttons");
     btns.append(
       button("ghost", t("set.export"), exportData),
-      button("ghost danger", t("set.clear"), () => { if (window.confirm(t("set.clearConfirm"))) clearData(); }),
+      button("ghost danger", t("set.clear"), async () => { if (await confirmDialog(t("set.clearConfirm"), { danger: true, yes: t("set.clear") })) clearData(); }),
     );
     data.append(btns);
 
@@ -838,7 +838,7 @@ const UI = (() => {
       up.title = t("set.ai.up"); down.title = t("set.ai.down");
       up.disabled = index === 0; down.disabled = index === total - 1;
       head.append(el("span", "src-rank", String(index + 1)), text(s.name, "src-name", v => save({ name: v })), on,
-        button("ghost small danger", t("set.ai.remove"), async () => { if (window.confirm(t("set.ai.removeConfirm"))) { await api.remove(s.id); render(); } }));
+        button("ghost small danger", t("set.ai.remove"), async () => { if (await confirmDialog(t("set.ai.removeConfirm"), { danger: true, yes: t("common.delete") })) { await api.remove(s.id); render(); } }));
 
       // 接口地址
       const url = text(s.baseUrl, "wide", v => save({ baseUrl: v }));
@@ -1047,7 +1047,7 @@ const UI = (() => {
           acts.append(b);
         } else if (!m.disk) acts.append(el("span", "set-note", t("local.noDisk")));
         if (m.installed && active !== m.id) acts.append(button("ghost small danger", t("local.remove", { size: gb(m.size) }), async () => {
-          if (!window.confirm(t("local.removeConfirm", { name: m.label }))) return;
+          if (!(await confirmDialog(t("local.removeConfirm", { name: m.label }), { danger: true, yes: t("common.delete") }))) return;
           await desktop.local.remove(m.id); info = await desktop.local.detect(); onChange(); draw();
         }));
         row.append(name, fit, acts);
@@ -1076,6 +1076,7 @@ const UI = (() => {
     let timer = null, drawn = false;
     const errText = e => {
       if (/not recognized|not found|ENOENT/i.test(e)) return t("set.conn.e.missing");
+      if (/RegistrationRejected|Client Registration rejected|invalid_redirect_uri|invalid_client_metadata/i.test(e)) return t("set.conn.e.loginBlocked");
       return I18N[LANG]["set.conn.e." + e] ? t("set.conn.e." + e) : e;
     };
 
@@ -1094,7 +1095,7 @@ const UI = (() => {
         return l;
       };
       head.append(name, sw(c.enabled, "set.ai.enabled", async on => { await api.update(c.id, { enabled: on }); render(); }),
-        button("ghost small danger", t("set.ai.remove"), async () => { if (window.confirm(t("set.conn.removeConfirm"))) { await api.remove(c.id); render(); } }));
+        button("ghost small danger", t("set.ai.remove"), async () => { if (await confirmDialog(t("set.conn.removeConfirm"), { danger: true, yes: t("common.delete") })) { await api.remove(c.id); render(); refreshStore(); } }));
 
       const target = el("code", "set-path conn-target", c.type === "http" ? c.url : c.command);
       target.title = target.textContent;
@@ -1110,7 +1111,7 @@ const UI = (() => {
 
       if (c.enabled) {
         const acts = el("div", "set-inline");
-        acts.append(sw(c.trusted, "set.conn.trust", on => api.update(c.id, { trusted: on })), button("ghost small", t("set.conn.reconnect"), async () => { await api.reconnect(c.id); render(); }));
+        acts.append(sw(c.trusted, c.online ? "set.conn.trustRead" : "set.conn.trust", on => api.update(c.id, { trusted: on })), button("ghost small", t("set.conn.reconnect"), async () => { await api.reconnect(c.id); render(); }));
         node.append(acts);
       }
       if (c.tools.length || target.hidden) {
@@ -1147,6 +1148,7 @@ const UI = (() => {
       status.textContent = r.ok ? t("set.conn.added") : t("set.conn.s.error", { error: errText(r.error) });
       if (r.ok) { input.value = ""; preset.value = ""; }
       render();
+      refreshStore();
     };
     input.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); add(); } });
     const addRow = el("div", "set-inline src-add conn-add");
@@ -1154,6 +1156,8 @@ const UI = (() => {
     const storeBox = el("div");
     let store = null;   // { cat, q } 打开时
     const storeBtn = button("primary small", t("conn.store"), () => { store = store ? null : { cat: "all", q: "" }; drawStore(); });
+    // 连接器有增减时，商店（开着的话）要跟着重新读，否则会显示过时的「断开/连接」
+    function refreshStore() { if (store) drawStore(); }
     async function drawStore() {
       storeBox.replaceChildren();
       if (!store || !api.store) return;
@@ -1182,14 +1186,13 @@ const UI = (() => {
           who.append(el("b", null, L(x).name), el("span", null, L(x).description));
           const tag = el("em", "store-cat", t(x.login ? "conn.tag.login" : "conn.tag.free"));
           const act = x.installed
-            ? button("ghost small", t("conn.disconnect"), async () => { await api.remove(x.installed); x.installed = null; renderItems(); render(); })
+            ? button("ghost small", t("conn.disconnect"), async () => { await api.remove(x.installed); render(); drawStore(); })
             : button("primary small", t("conn.connect"), async () => {
               const r = await api.install(x.id, LANG);
               if (!r.ok) return toast(t("set.conn.s.error", { error: errText(r.error) }), { kind: "warn", ttl: 8000 });
               toast(t(x.login ? "conn.connectingLogin" : "conn.connecting", { name: L(x).name }), { kind: "ok", ttl: x.login ? 12000 : 4000 });
-              x.installed = true;
-              renderItems();
               render();
+              drawStore();   // 重新读一次：拿到新连接器真正的 id，「断开」才删得掉
             });
           row.append(who, tag, act);
           items.append(row);
@@ -1264,6 +1267,57 @@ const UI = (() => {
   // ---------- 员工提问 / 请求批准（排队逐个显示）----------
   const askQueue = [];
   let asking = false;
+  // App 内的确认框（代替 window.confirm：系统对话框和 App 的样子不搭，按钮也只有英文）
+  // opts.danger：确认按钮变红，默认焦点放在「取消」，免得手快误删；opts.yes：确认按钮的文字
+  let confirmBox = null;
+  function confirmDialog(message, opts = {}) {
+    if (!confirmBox) {
+      confirmBox = el("div", "palette-wrap ask-wrap confirm-wrap");
+      confirmBox.setAttribute("aria-hidden", "true");
+      const card = el("div", "ask");
+      card.setAttribute("role", "alertdialog");
+      card.setAttribute("aria-modal", "true");
+      confirmBox._text = el("p", "ask-text");
+      confirmBox._no = el("button", "ghost"); confirmBox._no.type = "button";
+      confirmBox._yes = el("button"); confirmBox._yes.type = "button";
+      const acts = el("div", "ask-actions");
+      acts.append(confirmBox._no, confirmBox._yes);
+      card.append(confirmBox._text, acts);
+      confirmBox.append(card);
+      document.body.append(confirmBox);
+    }
+    const b = confirmBox;
+    if (b._done) b._done(false);   // 上一个还开着就当作取消
+    b._text.textContent = message;
+    b._no.textContent = t("common.cancel");
+    b._yes.textContent = opts.yes || t("common.confirm");
+    b._yes.className = opts.danger ? "ghost danger" : "primary";
+    b.classList.add("open");
+    b.setAttribute("aria-hidden", "false");
+    (opts.danger ? b._no : b._yes).focus();
+    return new Promise(resolve => {
+      const onKey = e => {
+        if (e.key === "Escape") { e.preventDefault(); done(false); }
+        else if (e.key === "Enter" && document.activeElement !== b._no) { e.preventDefault(); done(true); }
+      };
+      const onBack = e => { if (e.target === b) done(false); };
+      const done = ok => {
+        b._done = null;
+        b.classList.remove("open");
+        b.setAttribute("aria-hidden", "true");
+        document.removeEventListener("keydown", onKey, true);
+        b.removeEventListener("mousedown", onBack);
+        b._yes.onclick = b._no.onclick = null;
+        resolve(ok);
+      };
+      b._done = done;
+      b._yes.onclick = () => done(true);
+      b._no.onclick = () => done(false);
+      document.addEventListener("keydown", onKey, true);
+      b.addEventListener("mousedown", onBack);
+    });
+  }
+
   function askUser(req) {
     return new Promise(resolve => { askQueue.push({ req, resolve }); nextAsk(); });
   }
@@ -1434,5 +1488,5 @@ const UI = (() => {
     ChatUI.render();
   }
 
-  return { init, refresh, onLanguage, open, openTask, askUser, selectAgent, focusTeam, toast, toastPending, toastDone };
+  return { init, refresh, onLanguage, open, openTask, askUser, confirm: confirmDialog, selectAgent, focusTeam, toast, toastPending, toastDone };
 })();

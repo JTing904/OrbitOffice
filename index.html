@@ -104,7 +104,14 @@
       <button class="icon-btn small" id="chat-min" type="button" data-i18n-title="chat.min"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/></svg></button>
       <button class="icon-btn small" id="chat-close" type="button" data-i18n-title="common.close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </div>
-    <div class="cw-spaces" id="chat-spaces"></div>
+    <div class="cw-spaces-container">
+      <div class="cw-spaces-scroller" id="chat-spaces-scroller">
+        <div class="cw-spaces" id="chat-spaces"></div>
+        <button class="cw-scroll-left" id="chat-scroll-left" aria-label="Scroll left"></button>
+        <button class="cw-scroll-right" id="chat-scroll-right" aria-label="Scroll right"></button>
+      </div>
+      <button class="cw-all-agents" id="chat-all-agents" aria-label="All agents"></button>
+    </div>
     <div class="cw-log" id="chat-log"></div>
     <div class="cw-sugg" id="chat-sugg"></div>
     <form class="cw-form" id="chat-form" autocomplete="off">

@@ -274,6 +274,30 @@ const purposeOf = a => { const d = deptOf(a); return (d && d.purpose) || OFFICE.
 const taskTitle = o => (o.tpl ? t(o.tpl, { topic: o.topic }) : o.title);
 const snap = task => ({ title: task.title, tpl: task.tpl, topic: task.topic });
 
+/**
+ * Handles horizontal mouse wheel scrolling for an element.
+ * Prevents default behavior only when scrolling is possible in that direction.
+ * @param {WheelEvent} e - The wheel event
+ * @param {HTMLElement} el - The element to scroll
+ */
+function wheelScrollX(e, el) {
+  // Use deltaY for vertical scrolling, deltaX for horizontal if available and larger
+  const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+  if (delta !== 0) {
+    // Check if we can actually scroll in this direction
+    const canScrollLeft = el.scrollLeft > 0;
+    const canScrollRight = el.scrollLeft < (el.scrollWidth - el.clientWidth);
+    
+    if ((delta < 0 && canScrollLeft) || (delta > 0 && canScrollRight)) {
+      e.preventDefault();
+      // Scroll horizontally based on wheel delta (full delta for natural feel)
+      el.scrollLeft += delta;
+      // Clamp to valid range
+      el.scrollLeft = Math.max(0, Math.min(el.scrollLeft, el.scrollWidth - el.clientWidth));
+    }
+  }
+}
+
 // ---- 日志 ----
 function addLog(key, vars = {}) {
   logs.unshift({ time: new Date().toTimeString().slice(0, 8), key, vars });
@@ -852,6 +876,11 @@ function buildSelectAndExamples() {
     b.type = "button";
     b.addEventListener("click", () => { $("task-title").value = t(k); $("task-title").focus(); });
     ex.append(b);
+  }
+  // Add horizontal mouse wheel scrolling for examples row - only once
+  if (!ex.dataset.wheelAttached) {
+    ex.addEventListener("wheel", e => wheelScrollX(e, ex));
+    ex.dataset.wheelAttached = "true";
   }
 }
 

@@ -206,6 +206,7 @@ const ChatUI = (() => {
     if (target) space = target;
     geo.open = true; geo.min = false;
     applyGeo(); saveGeo(); render();
+    scrollActiveTabIntoView();
     $("chat-input").focus();
   }
   function close() { geo.open = false; applyGeo(); saveGeo(); }
@@ -342,6 +343,49 @@ const ChatUI = (() => {
     mk("group", t("chat.group"), g);
     for (const a of AGENTS) mk(a.id, agentName(a), el("span", "av", agentName(a)[0] || "?"), agentColor(a));
   }
+  
+  function updateScrollButtons() {
+    const scroller = $("chat-spaces-scroller");
+    const spaces = $("chat-spaces");
+    if (!scroller || !spaces) return;
+    
+    const canScrollLeft = spaces.scrollLeft > 0;
+    const canScrollRight = spaces.scrollLeft < (spaces.scrollWidth - spaces.clientWidth);
+    
+    $("chat-scroll-left").hidden = !canScrollLeft;
+    $("chat-scroll-right").hidden = !canScrollRight;
+  }
+  
+  function scrollSpaces(delta) {
+    const spacesContainer = $("chat-spaces");
+    if (!spacesContainer) return;
+    
+    const scrollAmount = spacesContainer.clientWidth * 0.7; // 70% of width
+    spacesContainer.scrollLeft += delta * scrollAmount;
+    spacesContainer.scrollLeft = Math.max(0, Math.min(spacesContainer.scrollLeft, spacesContainer.scrollWidth - spacesContainer.clientWidth));
+    updateScrollButtons();
+  }
+  
+  function scrollActiveTabIntoView() {
+    const scroller = $("chat-spaces-scroller");
+    const spacesContainer = $("chat-spaces");
+    if (!scroller || !spacesContainer) return;
+    
+    const activeTab = spacesContainer.querySelector(".space.active");
+    if (!activeTab) return;
+    
+    const tabLeft = activeTab.offsetLeft;
+    const tabRight = tabLeft + activeTab.offsetWidth;
+    const scrollerLeft = spacesContainer.scrollLeft;
+    const scrollerRight = scrollerLeft + spacesContainer.clientWidth;
+    
+    if (tabLeft < scrollerLeft) {
+      spacesContainer.scrollLeft = tabLeft;
+    } else if (tabRight > scrollerRight) {
+      spacesContainer.scrollLeft = tabRight - spacesContainer.clientWidth;
+    }
+    updateScrollButtons();
+  }
 
   function render() {
     if (!geo.open || geo.min) return;
@@ -352,6 +396,15 @@ const ChatUI = (() => {
     $("chat-subtitle").textContent = isGroup ? t("chat.online", { n: AGENTS.length }) : agentRole(a);
     $("chat-pill-text").textContent = $("chat-title").textContent;
     $("chat-input").placeholder = t("chat.placeholder");
+    
+    // Update all agents button with icon and count
+    const allAgentsBtn = $("chat-all-agents");
+    if (allAgentsBtn) {
+      allAgentsBtn.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+        <span>${AGENTS.length}</span>
+      `;
+    }
 
     const log = $("chat-log");
     log.replaceChildren();
@@ -408,6 +461,9 @@ const ChatUI = (() => {
       b.addEventListener("click", () => { $("chat-input").value = t(k); $("chat-input").focus(); });
       sugg.append(b);
     }
+    
+    // Scroll active tab into view
+    scrollActiveTabIntoView();
   }
 
   // ---- @ 点名弹层 ----
@@ -488,9 +544,233 @@ const ChatUI = (() => {
     document.addEventListener("keydown", e => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "j") { e.preventDefault(); toggle(); }
     });
+    
+
+    
+    // Scroll button event listeners
+    $("chat-scroll-left").addEventListener("click", () => scrollSpaces(-1));
+    $("chat-scroll-right").addEventListener("click", () => scrollSpaces(1));
+    
+    // All agents button - toggle popup
+    $("chat-all-agents").addEventListener("click", () => {
+      const allAgentsPopup = $("chat-all-agents-popup");
+      if (allAgentsPopup) {
+        allAgentsPopup.hidden = !allAgentsPopup.hidden;
+        if (!allAgentsPopup.hidden) {
+          $("chat-all-agents-input").value = "";
+          $("chat-all-agents-input").focus();
+          filterAllAgents();
+        }
+      } else {
+        createAllAgentsPopup();
+      }
+    });
+    
+    // Close all agents popup when clicking outside or pressing Escape
+    document.addEventListener("click", e => {
+      const popup = $("chat-all-agents-popup");
+      const button = $("chat-all-agents");
+      if (popup && !popup.hidden) {
+        if (!popup.contains(e.target) && !button.contains(e.target)) {
+          popup.hidden = true;
+        }
+      }
+    });
+    document.addEventListener("keydown", e => {
+      if (e.key === "Escape") {
+        const popup = $("chat-all-agents-popup");
+        if (popup && !popup.hidden) {
+          popup.hidden = true;
+        }
+      }
+    });
+    
+    // Add horizontal mouse wheel scrolling for chat spaces
+    const spacesContainer = $("chat-spaces");
+    if (spacesContainer) {
+      spacesContainer.addEventListener("wheel", e => wheelScrollX(e, spacesContainer));
+      
+      // Update scroll buttons when the container scrolls
+      spacesContainer.addEventListener("scroll", updateScrollButtons);
+    }
+    
     applyGeo();
     badge();
     render();
+  }
+  
+  function createAllAgentsPopup() {
+    const popup = el("div", "chat-all-agents-popup");
+    popup.id = "chat-all-agents-popup";
+    
+    const header = el("div", "chat-all-agents-header");
+    const input = el("input", null, null);
+    input.type = "text";
+    input.id = "chat-all-agents-input";
+    input.placeholder = t("chat.allAgents.search");
+    input.autocomplete = "off";
+    const clearBtn = el("button", "icon-btn small", null);
+    clearBtn.type = "button";
+    clearBtn.setAttribute("data-i18n-title", "common.close");
+    clearBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+    header.append(input, clearBtn);
+    
+    const body = el("div", "chat-all-agents-body");
+    body.id = "chat-all-agents-body";
+    
+    popup.append(header, body);
+    $("chat-win").appendChild(popup);
+    
+    input.addEventListener("input", () => {
+      filterAllAgents();
+      clearBtn.hidden = !input.value.trim();
+    });
+    
+    clearBtn.addEventListener("click", () => {
+      input.value = "";
+      clearBtn.hidden = true;
+      filterAllAgents();
+      input.focus();
+    });
+    
+    // Group chat entry
+    const groupEntry = el("div", "chat-all-agents-item");
+    const groupAv = el("span", "av group");
+    groupAv.textContent = "#";
+    const groupInfo = el("div");
+    const groupName = el("div", "nm");
+    groupName.textContent = t("chat.group");
+    const groupTitle = el("div", "tt");
+    groupTitle.textContent = t("chat.online", { n: AGENTS.length });
+    groupInfo.append(groupName, groupTitle);
+    groupEntry.append(groupAv, groupInfo);
+    groupEntry.addEventListener("click", () => {
+      space = "group";
+      render();
+      $("chat-input").focus();
+      $("chat-all-agents-popup").hidden = true;
+    });
+    body.appendChild(groupEntry);
+    
+    // Agents grouped by team
+    renderAllAgentsList(body);
+    
+    // Initial filter
+    filterAllAgents();
+  }
+  
+  function renderAllAgentsList(container) {
+    container.replaceChildren();
+    
+    // Group chat entry
+    const groupEntry = el("div", "chat-all-agents-item");
+    const groupAv = el("span", "av group");
+    groupAv.textContent = "#";
+    const groupInfo = el("div");
+    const groupName = el("div", "nm");
+    groupName.textContent = t("chat.group");
+    const groupTitle = el("div", "tt");
+    groupTitle.textContent = t("chat.online", { n: AGENTS.length });
+    groupInfo.append(groupName, groupTitle);
+    groupEntry.append(groupAv, groupInfo);
+    groupEntry.addEventListener("click", () => {
+      space = "group";
+      render();
+      $("chat-input").focus();
+      $("chat-all-agents-popup").hidden = true;
+    });
+    container.appendChild(groupEntry);
+    
+    // Group agents by team
+    const teamsMap = {};
+    for (const a of AGENTS) {
+      const teamId = a.team || "no-team";
+      if (!teamsMap[teamId]) {
+        teamsMap[teamId] = [];
+      }
+      teamsMap[teamId].push(a);
+    }
+    
+    // Sort teams by their order in TEAMS array
+    const sortedTeamIds = TEAMS.map(tm => tm.id).filter(id => teamsMap[id]);
+    // Add any teams not in TEAMS at the end
+    for (const teamId in teamsMap) {
+      if (!sortedTeamIds.includes(teamId)) {
+        sortedTeamIds.push(teamId);
+      }
+    }
+    
+    for (const teamId of sortedTeamIds) {
+      const agents = teamsMap[teamId];
+      const team = TEAMS.find(tm => tm.id === teamId) || { id: teamId, name: teamId, color: "#6b7280" };
+      
+      // Team header
+      const teamHeader = el("div", "chat-all-agents-team-header");
+      const teamHeaderSpan = el("span");
+      teamHeaderSpan.textContent = teamName(team);
+      teamHeader.append(teamHeaderSpan);
+      container.appendChild(teamHeader);
+      
+      // Agent entries
+      for (const a of agents.sort((x, y) => (x.order || 0) - (y.order || 0) || x.id.localeCompare(y.id))) {
+        const agentEntry = el("div", "chat-all-agents-item");
+        const agentAvatar = el("span", "av");
+        agentAvatar.style.setProperty("--c", agentColor(a));
+        agentAvatar.textContent = agentName(a)[0] || "?";
+        
+        const agentInfo = el("div");
+        const agentNameEl = el("div", "nm");
+        agentNameEl.textContent = agentName(a);
+        const agentRoleEl = el("div", "tt");
+        agentRoleEl.textContent = agentRole(a);
+        agentInfo.append(agentNameEl, agentRoleEl);
+        
+        agentEntry.append(agentAvatar, agentInfo);
+        
+        // Add unread/waiting indicator
+        if (unread[a.id] || waiting[a.id]) {
+          agentEntry.appendChild(el("i", "space-dot"));
+        }
+        
+        agentEntry.addEventListener("click", () => {
+          space = a.id;
+          render();
+          $("chat-input").focus();
+          $("chat-all-agents-popup").hidden = true;
+        });
+        container.appendChild(agentEntry);
+      }
+    }
+  }
+  
+  function filterAllAgents() {
+    const input = $("chat-all-agents-input");
+    const body = $("chat-all-agents-body");
+    if (!input || !body) return;
+    
+    const filter = input.value.trim().toLowerCase();
+    const items = body.children;
+    
+    for (const item of items) {
+      const text = item.textContent.toLowerCase();
+      item.hidden = !text.includes(filter);
+    }
+    
+    // Hide team headers if all agents in that team are hidden
+    const headers = body.getElementsByClassName("chat-all-agents-team-header");
+    for (const header of headers) {
+      // Find the next sibling elements until the next header
+      let hasVisibleAgent = false;
+      let sibling = header.nextElementSibling;
+      while (sibling && !sibling.classList.contains("chat-all-agents-team-header")) {
+        if (!sibling.hidden) {
+          hasVisibleAgent = true;
+          break;
+        }
+        sibling = sibling.nextElementSibling;
+      }
+      header.hidden = !hasVisibleAgent;
+    }
   }
 
   return { init, open, close, toggle, render, ask, tell, isOpen: () => geo.open && !geo.min, progress };

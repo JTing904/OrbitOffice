@@ -24,7 +24,11 @@ class Stdio {
     this.child.stdout.on("data", chunk => this.read(chunk));
     this.child.stderr.on("data", chunk => { this.err = (this.err + chunk.toString("utf8")).slice(-2000); });
     this.child.on("error", e => this.fail("Could not start: " + e.message));
-    this.child.on("close", code => this.fail("The program exited (code " + code + ")" + (this.err.trim() ? ": " + this.err.trim().slice(-400) : "")));
+    this.child.on("close", code => {
+      // 线上服务不让第三方 App 登录（mcp-remote 注册客户端被拒）：给一个能看懂的原因，而不是一段报错尾巴
+      if (/RegistrationRejected|Client Registration rejected|invalid_redirect_uri|invalid_client_metadata/i.test(this.err)) return this.fail("RegistrationRejected: the service refused third-party sign-in");
+      this.fail("The program exited (code " + code + ")" + (this.err.trim() ? ": " + this.err.trim().slice(-400) : ""));
+    });
     this.child.stdin.on("error", () => { /* 程序已经退出 */ });
   }
   read(chunk) {

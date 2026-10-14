@@ -2,54 +2,505 @@
   "version": 1,
   "note": "Official remote MCP servers checked to support one-click sign-in (OAuth with dynamic client registration), plus a few that need no sign-in. Remote ones connect through mcp-remote, which opens the browser for sign-in and keeps the token. Local ones need uv or Node.js.",
   "categories": [
-    { "id": "search", "zh": "搜索资料", "en": "Search & docs" },
-    { "id": "design", "zh": "设计", "en": "Design" },
-    { "id": "dev", "zh": "开发部署", "en": "Dev & deploy" },
-    { "id": "docs", "zh": "文档协作", "en": "Docs & files" },
-    { "id": "pm", "zh": "项目管理", "en": "Project management" },
-    { "id": "business", "zh": "商务支付", "en": "Business & payments" },
-    { "id": "tools", "zh": "本机工具", "en": "Local tools" }
+    {
+      "id": "search",
+      "zh": "搜索资料",
+      "en": "Search & docs"
+    },
+    {
+      "id": "design",
+      "zh": "设计",
+      "en": "Design"
+    },
+    {
+      "id": "dev",
+      "zh": "开发部署",
+      "en": "Dev & deploy"
+    },
+    {
+      "id": "docs",
+      "zh": "文档协作",
+      "en": "Docs & files"
+    },
+    {
+      "id": "pm",
+      "zh": "项目管理",
+      "en": "Project management"
+    },
+    {
+      "id": "business",
+      "zh": "商务支付",
+      "en": "Business & payments"
+    },
+    {
+      "id": "tools",
+      "zh": "本机工具",
+      "en": "Local tools"
+    }
   ],
   "connectors": [
-    { "id": "web-search", "category": "search", "login": false, "command": "uvx duckduckgo-mcp-server", "zh": { "name": "网页搜索", "description": "上网搜索、读网页（DuckDuckGo，不用登录）" }, "en": { "name": "Web search", "description": "Search the web and read pages (DuckDuckGo, no sign-in)" } },
-    { "id": "context7", "category": "search", "login": false, "url": "https://mcp.context7.com/mcp", "zh": { "name": "Context7 开发文档", "description": "查各种编程库、框架的最新文档" }, "en": { "name": "Context7 docs", "description": "Current documentation for programming libraries and frameworks" } },
-    { "id": "huggingface", "category": "search", "login": false, "remote": "https://huggingface.co/mcp", "zh": { "name": "Hugging Face", "description": "搜索 AI 模型、数据集和论文" }, "en": { "name": "Hugging Face", "description": "Search AI models, datasets and papers" } },
-    { "id": "cloudflare-docs", "category": "search", "login": false, "remote": "https://docs.mcp.cloudflare.com/mcp", "zh": { "name": "Cloudflare 文档", "description": "查 Cloudflare 产品的官方文档" }, "en": { "name": "Cloudflare docs", "description": "Search Cloudflare's product documentation" } },
-
-    { "id": "figma", "category": "design", "login": true, "remote": "https://mcp.figma.com/mcp", "zh": { "name": "Figma", "description": "读取和操作 Figma 设计稿" }, "en": { "name": "Figma", "description": "Read and work with Figma designs" } },
-    { "id": "canva", "category": "design", "login": true, "remote": "https://mcp.canva.com/mcp", "zh": { "name": "Canva", "description": "在 Canva 里找设计、生成和编辑设计" }, "en": { "name": "Canva", "description": "Find, create and edit Canva designs" } },
-    { "id": "miro", "category": "design", "login": true, "remote": "https://mcp.miro.com/", "zh": { "name": "Miro", "description": "读写 Miro 白板" }, "en": { "name": "Miro", "description": "Read and write Miro boards" } },
-    { "id": "gamma", "category": "design", "login": true, "remote": "https://mcp.gamma.app/mcp", "zh": { "name": "Gamma", "description": "生成演示文稿和网页" }, "en": { "name": "Gamma", "description": "Generate presentations and web pages" } },
-    { "id": "webflow", "category": "design", "login": true, "remote": "https://mcp.webflow.com/mcp", "zh": { "name": "Webflow", "description": "管理 Webflow 网站和内容" }, "en": { "name": "Webflow", "description": "Manage Webflow sites and content" } },
-    { "id": "wix", "category": "design", "login": true, "remote": "https://mcp.wix.com/mcp", "zh": { "name": "Wix", "description": "管理 Wix 网站" }, "en": { "name": "Wix", "description": "Manage Wix sites" } },
-
-    { "id": "vercel", "category": "dev", "login": true, "remote": "https://mcp.vercel.com", "zh": { "name": "Vercel", "description": "查看和管理 Vercel 项目、部署和日志" }, "en": { "name": "Vercel", "description": "Projects, deployments and logs on Vercel" } },
-    { "id": "netlify", "category": "dev", "login": true, "remote": "https://netlify-mcp.netlify.app/mcp", "zh": { "name": "Netlify", "description": "创建和部署 Netlify 网站" }, "en": { "name": "Netlify", "description": "Create and deploy Netlify sites" } },
-    { "id": "supabase", "category": "dev", "login": true, "remote": "https://mcp.supabase.com/mcp", "zh": { "name": "Supabase", "description": "管理 Supabase 数据库、表和项目" }, "en": { "name": "Supabase", "description": "Manage Supabase databases, tables and projects" } },
-    { "id": "neon", "category": "dev", "login": true, "remote": "https://mcp.neon.tech/mcp", "zh": { "name": "Neon", "description": "管理 Neon 的 Postgres 数据库" }, "en": { "name": "Neon", "description": "Manage Neon Postgres databases" } },
-    { "id": "prisma", "category": "dev", "login": true, "remote": "https://mcp.prisma.io/mcp", "zh": { "name": "Prisma", "description": "管理 Prisma Postgres 数据库" }, "en": { "name": "Prisma", "description": "Manage Prisma Postgres databases" } },
-    { "id": "railway", "category": "dev", "login": true, "remote": "https://mcp.railway.com/mcp", "zh": { "name": "Railway", "description": "部署和管理 Railway 服务" }, "en": { "name": "Railway", "description": "Deploy and manage Railway services" } },
-    { "id": "cloudflare", "category": "dev", "login": true, "remote": "https://mcp.cloudflare.com/mcp", "zh": { "name": "Cloudflare", "description": "管理 Cloudflare 账号里的服务" }, "en": { "name": "Cloudflare", "description": "Manage services in your Cloudflare account" } },
-    { "id": "sentry", "category": "dev", "login": true, "remote": "https://mcp.sentry.dev/mcp", "zh": { "name": "Sentry", "description": "查看线上报错和性能问题" }, "en": { "name": "Sentry", "description": "Look into production errors and performance issues" } },
-    { "id": "posthog", "category": "dev", "login": true, "remote": "https://mcp.posthog.com/mcp", "zh": { "name": "PostHog", "description": "产品数据分析、功能开关" }, "en": { "name": "PostHog", "description": "Product analytics and feature flags" } },
-
-    { "id": "notion", "category": "docs", "login": true, "remote": "https://mcp.notion.com/mcp", "zh": { "name": "Notion", "description": "搜索、阅读和编辑 Notion 页面和数据库" }, "en": { "name": "Notion", "description": "Search, read and edit Notion pages and databases" } },
-    { "id": "atlassian", "category": "docs", "login": true, "remote": "https://mcp.atlassian.com/v1/mcp", "zh": { "name": "Atlassian（Jira / Confluence）", "description": "Jira 任务和 Confluence 文档" }, "en": { "name": "Atlassian (Jira / Confluence)", "description": "Jira issues and Confluence pages" } },
-    { "id": "dropbox", "category": "docs", "login": true, "remote": "https://mcp.dropbox.com/mcp", "zh": { "name": "Dropbox", "description": "查找和读取 Dropbox 里的文件" }, "en": { "name": "Dropbox", "description": "Find and read files in Dropbox" } },
-    { "id": "granola", "category": "docs", "login": true, "remote": "https://mcp.granola.ai/mcp", "zh": { "name": "Granola", "description": "读取会议记录和纪要" }, "en": { "name": "Granola", "description": "Read meeting notes" } },
-
-    { "id": "linear", "category": "pm", "login": true, "remote": "https://mcp.linear.app/mcp", "zh": { "name": "Linear", "description": "查看和管理 Linear 的任务和项目" }, "en": { "name": "Linear", "description": "Issues and projects in Linear" } },
-    { "id": "clickup", "category": "pm", "login": true, "remote": "https://mcp.clickup.com/mcp", "zh": { "name": "ClickUp", "description": "查看和管理 ClickUp 任务" }, "en": { "name": "ClickUp", "description": "Tasks in ClickUp" } },
-    { "id": "zapier", "category": "pm", "login": true, "remote": "https://mcp.zapier.com/api/mcp/mcp", "zh": { "name": "Zapier", "description": "通过 Zapier 连接上千个应用的操作" }, "en": { "name": "Zapier", "description": "Actions across thousands of apps through Zapier" } },
-
-    { "id": "paypal", "category": "business", "login": true, "remote": "https://mcp.paypal.com/mcp", "zh": { "name": "PayPal", "description": "查看交易、开发票" }, "en": { "name": "PayPal", "description": "Transactions and invoices" } },
-    { "id": "square", "category": "business", "login": true, "remote": "https://mcp.squareup.com/mcp", "zh": { "name": "Square", "description": "订单、商品和付款" }, "en": { "name": "Square", "description": "Orders, catalog and payments" } },
-    { "id": "intercom", "category": "business", "login": true, "remote": "https://mcp.intercom.com/mcp", "zh": { "name": "Intercom", "description": "查看客服对话和客户信息" }, "en": { "name": "Intercom", "description": "Customer conversations and contacts" } },
-    { "id": "close", "category": "business", "login": true, "remote": "https://mcp.close.com/mcp", "zh": { "name": "Close CRM", "description": "销售线索和客户跟进" }, "en": { "name": "Close CRM", "description": "Sales leads and follow-ups" } },
-    { "id": "jotform", "category": "business", "login": true, "remote": "https://mcp.jotform.com/mcp", "zh": { "name": "Jotform", "description": "表单和收集到的回复" }, "en": { "name": "Jotform", "description": "Forms and their submissions" } },
-    { "id": "amplitude", "category": "business", "login": true, "remote": "https://mcp.amplitude.com/mcp", "zh": { "name": "Amplitude", "description": "用户行为数据分析" }, "en": { "name": "Amplitude", "description": "User behaviour analytics" } },
-
-    { "id": "blender", "category": "tools", "login": false, "command": "uvx blender-mcp", "zh": { "name": "Blender", "description": "操作 Blender（需要在 Blender 里装上 blender-mcp 插件）" }, "en": { "name": "Blender", "description": "Drive Blender (needs the blender-mcp add-on in Blender)" } },
-    { "id": "playwright", "category": "tools", "login": false, "command": "npx -y @playwright/mcp@latest", "zh": { "name": "浏览器（Playwright）", "description": "打开和操作网页浏览器" }, "en": { "name": "Browser (Playwright)", "description": "Open and drive a web browser" } }
+    {
+      "id": "web-search",
+      "category": "search",
+      "login": false,
+      "command": "uvx duckduckgo-mcp-server",
+      "zh": {
+        "name": "网页搜索",
+        "description": "上网搜索、读网页（DuckDuckGo，不用登录）"
+      },
+      "en": {
+        "name": "Web search",
+        "description": "Search the web and read pages (DuckDuckGo, no sign-in)"
+      }
+    },
+    {
+      "id": "context7",
+      "category": "search",
+      "login": false,
+      "url": "https://mcp.context7.com/mcp",
+      "zh": {
+        "name": "Context7 开发文档",
+        "description": "查各种编程库、框架的最新文档"
+      },
+      "en": {
+        "name": "Context7 docs",
+        "description": "Current documentation for programming libraries and frameworks"
+      }
+    },
+    {
+      "id": "huggingface",
+      "category": "search",
+      "login": false,
+      "remote": "https://huggingface.co/mcp",
+      "zh": {
+        "name": "Hugging Face",
+        "description": "搜索 AI 模型、数据集和论文"
+      },
+      "en": {
+        "name": "Hugging Face",
+        "description": "Search AI models, datasets and papers"
+      }
+    },
+    {
+      "id": "cloudflare-docs",
+      "category": "search",
+      "login": false,
+      "remote": "https://docs.mcp.cloudflare.com/mcp",
+      "zh": {
+        "name": "Cloudflare 文档",
+        "description": "查 Cloudflare 产品的官方文档"
+      },
+      "en": {
+        "name": "Cloudflare docs",
+        "description": "Search Cloudflare's product documentation"
+      }
+    },
+    {
+      "id": "canva",
+      "category": "design",
+      "login": true,
+      "remote": "https://mcp.canva.com/mcp",
+      "zh": {
+        "name": "Canva",
+        "description": "在 Canva 里找设计、生成和编辑设计"
+      },
+      "en": {
+        "name": "Canva",
+        "description": "Find, create and edit Canva designs"
+      }
+    },
+    {
+      "id": "miro",
+      "category": "design",
+      "login": true,
+      "remote": "https://mcp.miro.com/",
+      "zh": {
+        "name": "Miro",
+        "description": "读写 Miro 白板"
+      },
+      "en": {
+        "name": "Miro",
+        "description": "Read and write Miro boards"
+      }
+    },
+    {
+      "id": "gamma",
+      "category": "design",
+      "login": true,
+      "remote": "https://mcp.gamma.app/mcp",
+      "zh": {
+        "name": "Gamma",
+        "description": "生成演示文稿和网页"
+      },
+      "en": {
+        "name": "Gamma",
+        "description": "Generate presentations and web pages"
+      },
+      "remoteArgs": "--host localhost"
+    },
+    {
+      "id": "webflow",
+      "category": "design",
+      "login": true,
+      "remote": "https://mcp.webflow.com/mcp",
+      "zh": {
+        "name": "Webflow",
+        "description": "管理 Webflow 网站和内容"
+      },
+      "en": {
+        "name": "Webflow",
+        "description": "Manage Webflow sites and content"
+      }
+    },
+    {
+      "id": "wix",
+      "category": "design",
+      "login": true,
+      "remote": "https://mcp.wix.com/mcp",
+      "zh": {
+        "name": "Wix",
+        "description": "管理 Wix 网站"
+      },
+      "en": {
+        "name": "Wix",
+        "description": "Manage Wix sites"
+      }
+    },
+    {
+      "id": "vercel",
+      "category": "dev",
+      "login": true,
+      "remote": "https://mcp.vercel.com",
+      "zh": {
+        "name": "Vercel",
+        "description": "查看和管理 Vercel 项目、部署和日志"
+      },
+      "en": {
+        "name": "Vercel",
+        "description": "Projects, deployments and logs on Vercel"
+      }
+    },
+    {
+      "id": "netlify",
+      "category": "dev",
+      "login": true,
+      "remote": "https://netlify-mcp.netlify.app/mcp",
+      "zh": {
+        "name": "Netlify",
+        "description": "创建和部署 Netlify 网站"
+      },
+      "en": {
+        "name": "Netlify",
+        "description": "Create and deploy Netlify sites"
+      }
+    },
+    {
+      "id": "supabase",
+      "category": "dev",
+      "login": true,
+      "remote": "https://mcp.supabase.com/mcp",
+      "zh": {
+        "name": "Supabase",
+        "description": "管理 Supabase 数据库、表和项目"
+      },
+      "en": {
+        "name": "Supabase",
+        "description": "Manage Supabase databases, tables and projects"
+      }
+    },
+    {
+      "id": "neon",
+      "category": "dev",
+      "login": true,
+      "remote": "https://mcp.neon.tech/mcp",
+      "zh": {
+        "name": "Neon",
+        "description": "管理 Neon 的 Postgres 数据库"
+      },
+      "en": {
+        "name": "Neon",
+        "description": "Manage Neon Postgres databases"
+      }
+    },
+    {
+      "id": "prisma",
+      "category": "dev",
+      "login": true,
+      "remote": "https://mcp.prisma.io/mcp",
+      "zh": {
+        "name": "Prisma",
+        "description": "管理 Prisma Postgres 数据库"
+      },
+      "en": {
+        "name": "Prisma",
+        "description": "Manage Prisma Postgres databases"
+      }
+    },
+    {
+      "id": "railway",
+      "category": "dev",
+      "login": true,
+      "remote": "https://mcp.railway.com/mcp",
+      "zh": {
+        "name": "Railway",
+        "description": "部署和管理 Railway 服务"
+      },
+      "en": {
+        "name": "Railway",
+        "description": "Deploy and manage Railway services"
+      }
+    },
+    {
+      "id": "cloudflare",
+      "category": "dev",
+      "login": true,
+      "remote": "https://mcp.cloudflare.com/mcp",
+      "zh": {
+        "name": "Cloudflare",
+        "description": "管理 Cloudflare 账号里的服务"
+      },
+      "en": {
+        "name": "Cloudflare",
+        "description": "Manage services in your Cloudflare account"
+      }
+    },
+    {
+      "id": "sentry",
+      "category": "dev",
+      "login": true,
+      "remote": "https://mcp.sentry.dev/mcp",
+      "zh": {
+        "name": "Sentry",
+        "description": "查看线上报错和性能问题"
+      },
+      "en": {
+        "name": "Sentry",
+        "description": "Look into production errors and performance issues"
+      }
+    },
+    {
+      "id": "posthog",
+      "category": "dev",
+      "login": true,
+      "remote": "https://mcp.posthog.com/mcp",
+      "zh": {
+        "name": "PostHog",
+        "description": "产品数据分析、功能开关"
+      },
+      "en": {
+        "name": "PostHog",
+        "description": "Product analytics and feature flags"
+      }
+    },
+    {
+      "id": "notion",
+      "category": "docs",
+      "login": true,
+      "remote": "https://mcp.notion.com/mcp",
+      "zh": {
+        "name": "Notion",
+        "description": "搜索、阅读和编辑 Notion 页面和数据库"
+      },
+      "en": {
+        "name": "Notion",
+        "description": "Search, read and edit Notion pages and databases"
+      }
+    },
+    {
+      "id": "atlassian",
+      "category": "docs",
+      "login": true,
+      "remote": "https://mcp.atlassian.com/v1/mcp",
+      "zh": {
+        "name": "Atlassian（Jira / Confluence）",
+        "description": "Jira 任务和 Confluence 文档"
+      },
+      "en": {
+        "name": "Atlassian (Jira / Confluence)",
+        "description": "Jira issues and Confluence pages"
+      }
+    },
+    {
+      "id": "dropbox",
+      "category": "docs",
+      "login": true,
+      "remote": "https://mcp.dropbox.com/mcp",
+      "zh": {
+        "name": "Dropbox",
+        "description": "查找和读取 Dropbox 里的文件"
+      },
+      "en": {
+        "name": "Dropbox",
+        "description": "Find and read files in Dropbox"
+      }
+    },
+    {
+      "id": "granola",
+      "category": "docs",
+      "login": true,
+      "remote": "https://mcp.granola.ai/mcp",
+      "zh": {
+        "name": "Granola",
+        "description": "读取会议记录和纪要"
+      },
+      "en": {
+        "name": "Granola",
+        "description": "Read meeting notes"
+      }
+    },
+    {
+      "id": "linear",
+      "category": "pm",
+      "login": true,
+      "remote": "https://mcp.linear.app/mcp",
+      "zh": {
+        "name": "Linear",
+        "description": "查看和管理 Linear 的任务和项目"
+      },
+      "en": {
+        "name": "Linear",
+        "description": "Issues and projects in Linear"
+      }
+    },
+    {
+      "id": "clickup",
+      "category": "pm",
+      "login": true,
+      "remote": "https://mcp.clickup.com/mcp",
+      "zh": {
+        "name": "ClickUp",
+        "description": "查看和管理 ClickUp 任务"
+      },
+      "en": {
+        "name": "ClickUp",
+        "description": "Tasks in ClickUp"
+      }
+    },
+    {
+      "id": "zapier",
+      "category": "pm",
+      "login": true,
+      "remote": "https://mcp.zapier.com/api/mcp/mcp",
+      "zh": {
+        "name": "Zapier",
+        "description": "通过 Zapier 连接上千个应用的操作"
+      },
+      "en": {
+        "name": "Zapier",
+        "description": "Actions across thousands of apps through Zapier"
+      }
+    },
+    {
+      "id": "paypal",
+      "category": "business",
+      "login": true,
+      "remote": "https://mcp.paypal.com/mcp",
+      "zh": {
+        "name": "PayPal",
+        "description": "查看交易、开发票"
+      },
+      "en": {
+        "name": "PayPal",
+        "description": "Transactions and invoices"
+      }
+    },
+    {
+      "id": "square",
+      "category": "business",
+      "login": true,
+      "remote": "https://mcp.squareup.com/mcp",
+      "zh": {
+        "name": "Square",
+        "description": "订单、商品和付款"
+      },
+      "en": {
+        "name": "Square",
+        "description": "Orders, catalog and payments"
+      }
+    },
+    {
+      "id": "intercom",
+      "category": "business",
+      "login": true,
+      "remote": "https://mcp.intercom.com/mcp",
+      "zh": {
+        "name": "Intercom",
+        "description": "查看客服对话和客户信息"
+      },
+      "en": {
+        "name": "Intercom",
+        "description": "Customer conversations and contacts"
+      }
+    },
+    {
+      "id": "close",
+      "category": "business",
+      "login": true,
+      "remote": "https://mcp.close.com/mcp",
+      "zh": {
+        "name": "Close CRM",
+        "description": "销售线索和客户跟进"
+      },
+      "en": {
+        "name": "Close CRM",
+        "description": "Sales leads and follow-ups"
+      }
+    },
+    {
+      "id": "jotform",
+      "category": "business",
+      "login": true,
+      "remote": "https://mcp.jotform.com/mcp",
+      "zh": {
+        "name": "Jotform",
+        "description": "表单和收集到的回复"
+      },
+      "en": {
+        "name": "Jotform",
+        "description": "Forms and their submissions"
+      }
+    },
+    {
+      "id": "amplitude",
+      "category": "business",
+      "login": true,
+      "remote": "https://mcp.amplitude.com/mcp",
+      "zh": {
+        "name": "Amplitude",
+        "description": "用户行为数据分析"
+      },
+      "en": {
+        "name": "Amplitude",
+        "description": "User behaviour analytics"
+      }
+    },
+    {
+      "id": "blender",
+      "category": "tools",
+      "login": false,
+      "command": "uvx blender-mcp",
+      "zh": {
+        "name": "Blender",
+        "description": "操作 Blender（需要在 Blender 里装上 blender-mcp 插件）"
+      },
+      "en": {
+        "name": "Blender",
+        "description": "Drive Blender (needs the blender-mcp add-on in Blender)"
+      }
+    },
+    {
+      "id": "playwright",
+      "category": "tools",
+      "login": false,
+      "command": "npx -y @playwright/mcp@latest",
+      "zh": {
+        "name": "浏览器（Playwright）",
+        "description": "打开和操作网页浏览器"
+      },
+      "en": {
+        "name": "Browser (Playwright)",
+        "description": "Open and drive a web browser"
+      }
+    }
   ]
 }
