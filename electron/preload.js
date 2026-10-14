@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld("desktop", {
   appName: ipcRenderer.sendSync("app:name"),
   windowControl: action => ipcRenderer.send("window-control", action),
   notify: (title, body) => ipcRenderer.send("notify", title, body),
+  devShot: name => ipcRenderer.invoke("dev:shot", name),   // 测试用：只有带 --shots 启动时才会截图
   getProject: () => ipcRenderer.invoke("project:get"),
   pickProject: () => ipcRenderer.invoke("project:pick"),
   caps: {

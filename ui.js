@@ -196,6 +196,29 @@ const UI = (() => {
   }
 
   // ---------- 大脑 ----------
+  // 分页：设置和大脑内容多，按主题分成几页，一次只看一页
+  const tabState = { brain: "memory", settings: "general" };
+  function tabbed(view, key, pages) {
+    const bar = el("div", "view-tabs");
+    const panes = pages.map(p => {
+      const pane = el("div", "view-pane");
+      pane.append(...p.nodes.filter(Boolean));
+      pane.dataset.tab = p.id;
+      const h = pane.querySelector(".set-section > h3, #set-office > h3");
+      if (h && h.textContent.trim() === p.label.trim()) h.hidden = true;
+      return pane;
+    });
+    const show = id => {
+      tabState[key] = id;
+      bar.querySelectorAll(".view-tab").forEach(b => b.classList.toggle("active", b.dataset.tab === id));
+      panes.forEach(p => { p.hidden = p.dataset.tab !== id; });
+      if (view.parentNode) view.parentNode.scrollTop = 0;
+    };
+    for (const p of pages) { const b = button("view-tab", p.label, () => show(p.id)); b.dataset.tab = p.id; bar.append(b); }
+    show(pages.some(p => p.id === tabState[key]) ? tabState[key] : pages[0].id);
+    return { bar, panes, show };
+  }
+
   function buildBrain() {
     const v = $("view-brain");
     v.replaceChildren();
@@ -248,11 +271,19 @@ const UI = (() => {
       notesHead.append(pick);
       loadNotes(DEPTS[0].id);
     } else loadNotes("");
-    const skillBox = el("section", "td-block skills");
+    const skillBox = el("section", "td-block skills-lib");
     if (window.desktop && desktop.skills) buildSkills(skillBox);
     const connBox = el("section", "td-block connectors");
-    if (window.desktop && desktop.connectors) { connBox.append(el("span", "eyebrow", t("set.conn"))); buildConnSettings(connBox, desktop.connectors); }
-    v.append(head, notes, skillBox, connBox, q, filters, list);
+    if (window.desktop && desktop.connectors) buildConnSettings(connBox, desktop.connectors);
+    // 大脑分三页：记忆（笔记 + 做过的成果）、技能库、连接器
+    const memTitle = el("span", "eyebrow brain-results", t("brain.results"));
+    const tabs = tabbed(v, "brain", [
+      { id: "memory", label: t("brain.tab.memory"), nodes: [notes, memTitle, q, filters, list] },
+      { id: "skills", label: t("brain.tab.skills"), nodes: window.desktop && desktop.skills ? [skillBox] : [el("p", "set-note", t("set.project.web"))] },
+      { id: "connectors", label: t("brain.tab.connectors"), nodes: window.desktop && desktop.connectors ? [connBox] : [el("p", "set-note", t("set.project.web"))] },
+    ]);
+    v.append(head, tabs.bar, ...tabs.panes);
+    UI.brainTab = tabs.show;
     renderFilters();
     brainSig = "";
     renderMemories();
@@ -369,15 +400,21 @@ const UI = (() => {
     async function draw() {
       const res = await api.list();
       const items = res.ok ? res.value : [];
-      box.replaceChildren(el("span", "eyebrow", t("skill.title")), el("p", "set-note", t("skill.note")));
+      box.replaceChildren(el("p", "set-note", t("skill.note")));
       const tools = el("div", "set-buttons skill-tools");
+      const more = el("details", "more-menu");
+      const menu = el("div", "more-items");
+      menu.append(
+        button("ghost small", t("skill.importFolder"), async () => { more.open = false; const r = await api.importFolder(); if (!r.ok) return fail(r); if (r.value) await confirmImport(r.value); draw(); }),
+        button("ghost small", t("skill.importFiles"), async () => { more.open = false; const r = await api.pickFiles(); if (!r.ok) return fail(r); await importTexts(r.value); }),
+        button("ghost small", t("office.openDir"), () => { more.open = false; api.openDir(); }),
+      );
+      more.append(el("summary", "ghost small", t("skill.more")), menu);
       tools.append(
         button("primary small", t("store.open"), () => { editing = editing && editing.store ? null : { store: true, cat: "all", q: "" }; draw(); }),
         button("ghost small", t("skill.new"), () => { editing = { id: null, text: NEW() }; draw(); }),
         button("ghost small", t("skill.ai"), () => { editing = { ai: true }; draw(); }),
-        button("ghost small", t("skill.importFolder"), async () => { const r = await api.importFolder(); if (!r.ok) return fail(r); if (r.value) await confirmImport(r.value); draw(); }),
-        button("ghost small", t("skill.importFiles"), async () => { const r = await api.pickFiles(); if (!r.ok) return fail(r); await importTexts(r.value); }),
-        button("ghost small", t("office.openDir"), () => api.openDir()),
+        more,
       );
       box.append(tools);
       if (busy) box.append(el("p", "set-status", busy));
@@ -711,12 +748,12 @@ const UI = (() => {
       targetWrap.append(el("p", "set-note", t("set.caps.targets.note")), tagBox, addRow);
       const show = c => {
         box.checked = c.commands; blender.textContent = c.blenderFound ? t("set.caps.blender") : ""; blender.hidden = !c.blenderFound;
-        targets = c.targets || []; drawTags(); targetWrap.hidden = !c.commands;
+        targets = c.targets || []; drawTags(); targetWrap.hidden = !c.commands; targetHead.hidden = !c.commands;
       };
       box.addEventListener("change", () => d.caps.set({ commands: box.checked }).then(show));
       d.caps.get().then(show);
-      caps.append(row(t("set.caps.commands"), sw), el("p", "set-note", t("set.caps.note")), blender,
-        el("h4", "set-subhead", t("set.caps.targets")), targetWrap);
+      const targetHead = el("h4", "set-subhead", t("set.caps.targets"));
+      caps.append(row(t("set.caps.commands"), sw), el("p", "set-note", t("set.caps.note")), blender, targetHead, targetWrap);
     } else caps.append(el("p", "set-note", t("set.project.web")));
 
     // 连接器：接上外部工具
@@ -740,7 +777,15 @@ const UI = (() => {
     const kbd = (k, label) => row(label, el("kbd", null, k));
     keys.append(kbd("Ctrl J", t("set.sc.chat")), kbd("Ctrl K", t("set.sc.palette")), kbd("Esc", t("set.sc.close")), kbd("F11", t("set.sc.full")));
 
-    v.append(general, agents, project, caps, conn, ai, data, keys);
+    const tabs = tabbed(v, "settings", [
+      { id: "general", label: t("set.tab.general"), nodes: [general, project, keys] },
+      { id: "office", label: t("set.tab.office"), nodes: [agents] },
+      { id: "ai", label: t("set.tab.ai"), nodes: [ai, conn] },
+      { id: "perm", label: t("set.tab.perm"), nodes: [caps] },
+      { id: "data", label: t("set.tab.data"), nodes: [data] },
+    ]);
+    v.append(tabs.bar, ...tabs.panes);
+    UI.settingsTab = tabs.show;
   }
 
   const AI_PRESETS = [
@@ -929,7 +974,7 @@ const UI = (() => {
 
   // ---- 内置本地 AI：检测电脑配置，推荐模型，一键下载并启用 ----
   function buildLocalAi(box, onChange) {
-    let info = null, timer = null, busy = false;
+    let info = null, timer = null, busy = false, kind = "general", showAll = false;
     const gb = n => (n >= 10 ? n.toFixed(0) : n.toFixed(1)) + " GB";
     const draw = async () => {
       clearTimeout(timer);
@@ -964,17 +1009,28 @@ const UI = (() => {
         const m = info.list.find(x => x.id === active);
         box.append(el("p", "set-status local-running", t("local.running", { name: m ? m.label : active, where: t(st.running.gpu ? "local.where.gpu" : "local.where.cpu") })));
       }
-      for (const m of info.list) {
-        const row = el("div", "local-model" + (m.id === info.recommended ? " rec" : "") + (m.fit === "no" ? " off" : ""));
+      const kinds = el("div", "local-kinds");
+      for (const k of ["general", "code"]) {
+        const b = button("view-tab" + (kind === k ? " active" : ""), t("local.kind." + k), () => { kind = k; draw(); });
+        kinds.append(b);
+      }
+      if (info.list.some(m => m.kind === "code")) box.append(kinds);   // 有写代码专用的模型才分两页
+      const recId = kind === "code" ? info.recommendedCode : info.recommended;
+      const inKind = info.list.filter(m => (m.kind || "general") === kind);
+      // 跑不动的模型默认不显示（正在用的、已下载的总是显示）
+      const shown = inKind.filter(m => showAll || m.fit !== "no" || m.installed || active === m.id);
+      if (kind === "code") box.append(el("p", "set-note", t("local.codeNote")));
+      for (const m of shown) {
+        const row = el("div", "local-model" + (m.id === recId ? " rec" : "") + (m.fit === "no" ? " off" : ""));
         const name = el("div", "local-name");
-        name.append(el("b", null, m.label), el("span", null, gb(m.size)));
-        if (m.id === info.recommended) name.append(el("em", "local-rec", t("local.recommended")));
+        name.append(el("b", null, m.label), el("span", "local-by", m.by || ""), el("span", null, gb(m.size)));
+        if (m.id === recId) name.append(el("em", "local-rec", t("local.recommended")));
         const fit = el("span", "local-fit speed-" + m.speed, m.fit === "no" ? t("local.fit.no") : t("local.fit." + m.fit) + " · " + t("local.speed." + m.speed));
         const acts = el("div", "set-inline");
         const installed = m.installed || (st.binInstalled && active === m.id);
         if (active === m.id) acts.append(button("ghost small", t("local.disable"), async () => { await desktop.local.disable(); onChange(); draw(); }));
         else if (m.fit !== "no" && m.disk) {
-          const b = button(installed ? "ghost small" : "primary small", t(installed ? "local.enable" : "local.download"), async () => {
+          const b = button(installed || m.id !== recId ? "ghost small" : "primary small", t(installed ? "local.enable" : "local.download"), async () => {
             if (busy) return;
             busy = true;
             const pending = desktop.local.enable(m.id, t("local.sourceName"));
@@ -997,6 +1053,8 @@ const UI = (() => {
         row.append(name, fit, acts);
         box.append(row);
       }
+      const hidden = inKind.length - shown.length;
+      if (hidden > 0 || showAll) box.append(button("ghost small local-more", showAll ? t("local.hideBig") : t("local.showBig", { n: hidden }), () => { showAll = !showAll; draw(); }));
       if (phase === "downloading" || phase === "starting") timer = setTimeout(draw, 1000);
     };
     draw();
@@ -1040,6 +1098,7 @@ const UI = (() => {
 
       const target = el("code", "set-path conn-target", c.type === "http" ? c.url : c.command);
       target.title = target.textContent;
+      if (c.catalogId || /duckduckgo-mcp-server/.test(c.command || "")) target.hidden = true;
       const st = el("p", "set-status" + (c.status === "error" ? " bad" : ""));
       st.textContent = !c.enabled ? t("set.conn.s.off")
         : c.status === "ready" ? t("set.conn.s.ready", { n: c.tools.length })
@@ -1054,9 +1113,10 @@ const UI = (() => {
         acts.append(sw(c.trusted, "set.conn.trust", on => api.update(c.id, { trusted: on })), button("ghost small", t("set.conn.reconnect"), async () => { await api.reconnect(c.id); render(); }));
         node.append(acts);
       }
-      if (c.tools.length) {
+      if (c.tools.length || target.hidden) {
         const more = el("details", "src-adv");
-        more.append(el("summary", null, t("set.conn.tools", { n: c.tools.length })), el("div", "conn-tools", c.tools.join("  ·  ")));
+        const cmd = el("code", "set-path conn-target", c.type === "http" ? c.url : c.command);
+        more.append(el("summary", null, c.tools.length ? t("set.conn.tools", { n: c.tools.length }) : t("set.ai.advanced")), cmd, el("div", "conn-tools", c.tools.join("  ·  ")));
         node.append(more);
       }
       return node;

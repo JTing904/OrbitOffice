@@ -34,7 +34,7 @@ function loadConfig() {
   if (!config.webSeeded) {
     config.webSeeded = true;
     if (!config.connectors.some(c => /duckduckgo-mcp-server/.test(c.command || ""))) {
-      config.connectors.unshift({ id: "conn-web", name: "Web search", type: "stdio", command: "uvx duckduckgo-mcp-server", enabled: true, trusted: true, secrets: [] });
+      config.connectors.unshift({ id: "conn-web", name: /^zh/i.test(app.getLocale() || "") ? "网页搜索" : "Web search", type: "stdio", command: "uvx duckduckgo-mcp-server", enabled: true, trusted: true, secrets: [] });
     }
     saveConfig();
   }
@@ -74,6 +74,9 @@ function createWindow() {
   });
   win.on("closed", () => { win = null; });
 
+  // 测试用（只有带启动参数时才生效）：--log-console 把页面里的警告和报错打印出来；--shots=文件夹 允许页面请求截图
+  if (process.argv.includes("--log-console")) win.webContents.on("console-message", (_e, level, message, line, source) => { if (level >= 2) console.log("[renderer " + (level === 3 ? "error" : "warn") + "] " + message + " (" + String(source).split("/").pop() + ":" + line + ")"); });
+
   // 开发用：--screenshot=文件路径，启动几秒后截图并退出，用来自动检查界面
   const shot = process.argv.find(a => a.startsWith("--screenshot="));
   const evalArg = process.argv.find(a => a.startsWith("--eval="));   // 开发用：截图前先在页面里执行一段脚本
@@ -101,6 +104,16 @@ ipcMain.on("window-control", (e, action) => {
 
 // 产品名（package.json 的 productName），页面上显示的名字都用它
 ipcMain.on("app:name", e => { e.returnValue = app.getName(); });
+
+const shotsArg = process.argv.find(x => x.startsWith("--shots="));
+ipcMain.handle("dev:shot", async (e, name) => {
+  if (!shotsArg) return false;
+  const w = BrowserWindow.fromWebContents(e.sender);
+  const img = await w.webContents.capturePage();
+  fs.mkdirSync(shotsArg.slice(8), { recursive: true });
+  fs.writeFileSync(path.join(shotsArg.slice(8), String(name).replace(/[^\w-]/g, "_") + ".png"), img.toPNG());
+  return true;
+});
 
 ipcMain.on("notify", (_e, title, body) => {
   if (Notification.isSupported()) new Notification({ title: String(title).slice(0, 120), body: String(body).slice(0, 300) }).show();
@@ -391,7 +404,7 @@ ipcMain.handle("local:detect", async () => {
   try {
     const hw = await hardware();
     const list = localai.assess(hw);
-    return { ok: true, hw, list, recommended: localai.recommend(list), status: localai.status(), config: config.localAI || null };
+    return { ok: true, hw, list, recommended: localai.recommend(list), recommendedCode: localai.recommend(list, "code"), status: localai.status(), config: config.localAI || null };
   } catch (e) { return { ok: false, error: String(e.message || e) }; }
 });
 ipcMain.handle("local:status", () => Object.assign(localai.status(), { config: config.localAI || null }));

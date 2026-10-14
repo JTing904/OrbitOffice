@@ -33,7 +33,9 @@ const OfficeUI = (() => {
   const DEPT_COLORS = ["#2dd4bf", "#f472b6", "#f59e0b", "#60a5fa", "#a78bfa", "#34d399"];
   // 第一次分部门：现有的组都放进「部门 1」（沿用办公室的说明），再加一个空的新部门
   function startDepartments(ids) {
-    const first = { id: OfficeDef.uniqueId("", ids, "dept"), name: t("dept.newName", { n: 1 }), color: DEPT_COLORS[0], purpose: OFFICE.purpose, folder: "" };
+    // 现在的办公室还是某个现成模板的话，第一个部门就用模板的名字（例如「软件团队」），不叫「部门 1」
+    const tpl = OfficeDef.TEMPLATES.find(name => OfficeDef.fromTemplate(name, LANG).agents.every(a => AGENTS.some(x => x.id === a.id)));
+    const first = { id: OfficeDef.uniqueId("", ids, "dept"), name: tpl ? t("office.tplShort." + tpl) : t("dept.newName", { n: 1 }), color: DEPT_COLORS[0], purpose: OFFICE.purpose, folder: "" };
     ids.add(first.id);
     return { depts: [first], teams: teamsPlain().map(x => Object.assign(x, { dept: first.id })) };
   }
@@ -72,15 +74,26 @@ const OfficeUI = (() => {
     box.append(pRow);
 
     const tools = el("div", "set-buttons office-tools");
+    // 小菜单：点标题展开，里面是按钮
+    const menu = (label, items) => {
+      const d = el("details", "more-menu");
+      const list = el("div", "more-items");
+      for (const it of items) list.append(it.title ? el("span", "more-title", it.title) : btn("ghost small" + (it.danger ? " danger" : ""), it.label, () => { d.open = false; it.run(); }));
+      d.append(el("summary", null, label), list);
+      return d;
+    };
+    // 模板：每个模板可以「加为新部门」或「替换现在的全部」
+    const tplItems = [];
+    for (const name of OfficeDef.TEMPLATES) {
+      tplItems.push({ title: t("office.tpl." + name) });
+      tplItems.push({ label: t("dept.addTemplate"), run: () => templateAsDept(name) });
+      tplItems.push({ label: t("office.useTemplate"), danger: true, run: () => useTemplate(name) });
+    }
     tools.append(
-      btn("ghost", t("office.ai.office"), () => { editing = { kind: "office-ai" }; render(); }),
-      btn("ghost", t("office.import"), importFiles),
-      btn("ghost", t("office.openDir"), () => api().openDir()),
+      btn("primary small", t("office.ai.office"), () => { editing = { kind: "office-ai" }; render(); }),
+      menu(t("office.fromTemplate"), tplItems),
+      menu(t("office.more"), [{ label: t("office.import"), run: importFiles }, { label: t("office.openDir"), run: () => api().openDir() }]),
     );
-    // 换成某个现成的模板（软件团队、内容团队）
-    const tpl = el("select", "set-select office-template");
-    for (const name of OfficeDef.TEMPLATES) tpl.append(new Option(t("office.tpl." + name), name));
-    tools.append(tpl, btn("ghost", t("dept.addTemplate"), () => templateAsDept(tpl.value)), btn("ghost danger", t("office.useTemplate"), () => useTemplate(tpl.value)));
     box.append(tools);
     if (editing && editing.kind === "office-ai") box.append(officeAiPanel());
     if (busyText) box.append(el("p", "set-status", busyText));
@@ -390,14 +403,19 @@ const OfficeUI = (() => {
     const p = el("div", "office-ai");
     const input = el("textarea", "set-input wide");
     input.rows = rows || 3; input.placeholder = t(placeholderKey);
+    // 生成时整段会重画：保留你写的描述，生成期间不能改
+    input.value = (editing && editing.draft) || "";
+    input.disabled = !!busyText;
     const acts = el("div", "set-buttons");
     const go = btn("primary", t("office.ai.go"), async () => {
       if (!input.value.trim()) return;
+      if (editing) editing.draft = input.value;
       go.disabled = true;
       busyText = t("office.ai.working");
       render();
       try { await onGo(input.value.trim()); } finally { busyText = ""; render(); }
     });
+    go.disabled = !!busyText;
     acts.append(go, btn("ghost", t("office.cancel"), () => { editing = null; render(); }));
     p.append(input, acts);
     return p;
@@ -434,8 +452,19 @@ const OfficeUI = (() => {
     return aiPanel("office.ai.office.ph", async text => {
       const r = await desktop.agent.compose({ kind: "office", text, lang: LANG });
       if (!r || !r.ok) { editing = null; return composeErr(r); }
-      editing = { kind: "office-ai", preview: r.result };
+      editing = { kind: "office-ai", preview: dedupeOffice(r.result) };
     }, 4);
+  }
+
+  // AI 有时会把同一个人同时列在两个组里：同名同岗位的只留第一次出现的；组里没剩人就不建这个组
+  function dedupeOffice(o) {
+    const seen = new Set();
+    return Object.assign({}, o, { teams: (o.teams || []).map(tm => Object.assign({}, tm, { agents: (tm.agents || []).filter(a => {
+      const k = String(a.name || "").trim().toLowerCase() + "|" + String(a.role || "").trim().toLowerCase();
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    }) })).filter(tm => tm.agents.length) });
   }
 
   // 把 AI 生成的办公室写成文件：替换现在的全部，或加在现在的后面
@@ -445,6 +474,7 @@ const OfficeUI = (() => {
     const teams = replace ? [] : teamsPlain();
     const agents = [];
     const room = MAX_TEAMS - teams.length;
+    o = dedupeOffice(o);
     o.teams.slice(0, room).forEach((tm, i) => {
       const id = OfficeDef.uniqueId(tm.name, ids, "team"); ids.add(id);
       teams.push({ id, name: String(tm.name || id).slice(0, 40), color: /^#[0-9a-f]{6}$/i.test(tm.color || "") ? tm.color : PALETTE[(teams.length) % PALETTE.length], style: STYLES[teams.length % STYLES.length] });
@@ -525,7 +555,7 @@ const OfficeUI = (() => {
     if (!depts.length) { const s = startDepartments(ids); depts = s.depts; old = s.teams; }
     const def = OfficeDef.fromTemplate(name, LANG);
     const d = newDept(ids, depts.length + 1, def.purpose);
-    d.name = t("office.tpl." + name).replace(/^[^：:]+[：:]\s*/, "");
+    d.name = t("office.tplShort." + name);
     const added = OfficeDef.intoDepartment(def, d.id, ids);
     if (old.length + added.teams.length > MAX_TEAMS) return UI.toast(t("office.e.tooManyTeams", { n: MAX_TEAMS }), { kind: "warn" });
     await saveStructural({ departments: depts.concat(d), teams: old.concat(added.teams), agents: added.agents });

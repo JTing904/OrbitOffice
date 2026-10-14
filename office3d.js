@@ -148,7 +148,8 @@
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-    scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0x9db0ff, size: 0.35, transparent: true, opacity: 0.8 })));
+    // 星星用固定的像素大小：按距离缩放的话，离镜头很近的那颗会变成一个大方块
+    scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0x9db0ff, size: 2, sizeAttenuation: false, transparent: true, opacity: 0.8 })));
 
     // 共享大脑：发光核心 + 线框外壳 + 两道光环 + 底座（Blender 模型）
     brain = inst("brain");

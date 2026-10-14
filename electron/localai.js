@@ -9,12 +9,17 @@ const os = require("os");
 const path = require("path");
 const { spawn, execFile } = require("child_process");
 
-// 可选的模型：都是 Apache-2.0 许可的 Qwen3.5，调用工具和中文都不错。size 是文件大小（GB）。
+// 可选的模型：都是能商用的开源许可（Apache-2.0），都在真机上测过能正确调用工具（Phi-4 mini、Qwen2.5 Coder 实测不会调用工具，已拿掉）。size 是文件大小（GB），按大小排。
+//   kind: "general" 什么活都能干；"code" 专门写代码
+//   rec: 可以被推荐（Qwen3.5 中文和调用工具最稳，推荐只在它们里面挑）
+//   moe: 每次只用一小部分参数，没有显卡也不算太慢
 const MODELS = [
-  { id: "qwen3.5-2b", label: "Qwen3.5 2B", repo: "unsloth/Qwen3.5-2B-GGUF", file: "Qwen3.5-2B-Q4_K_M.gguf", size: 1.19 },
-  { id: "qwen3.5-4b", label: "Qwen3.5 4B", repo: "unsloth/Qwen3.5-4B-GGUF", file: "Qwen3.5-4B-Q4_K_M.gguf", size: 2.55 },
-  { id: "qwen3.5-9b", label: "Qwen3.5 9B", repo: "unsloth/Qwen3.5-9B-GGUF", file: "Qwen3.5-9B-Q4_K_M.gguf", size: 5.29 },
-  { id: "qwen3.5-35b-a3b", label: "Qwen3.5 35B-A3B", repo: "unsloth/Qwen3.5-35B-A3B-GGUF", file: "Qwen3.5-35B-A3B-Q4_K_M.gguf", size: 20.5, moe: true },
+  { id: "qwen3.5-2b", label: "Qwen3.5 2B", by: "Qwen", kind: "general", rec: true, repo: "unsloth/Qwen3.5-2B-GGUF", file: "Qwen3.5-2B-Q4_K_M.gguf", size: 1.19 },
+  { id: "qwen3.5-4b", label: "Qwen3.5 4B", by: "Qwen", kind: "general", rec: true, repo: "unsloth/Qwen3.5-4B-GGUF", file: "Qwen3.5-4B-Q4_K_M.gguf", size: 2.55 },
+  { id: "granite-4.0-h-tiny", label: "Granite 4.0 Tiny", by: "IBM", kind: "general", repo: "unsloth/granite-4.0-h-tiny-GGUF", file: "granite-4.0-h-tiny-Q4_K_M.gguf", size: 3.96, moe: true },
+  { id: "gemma-4-e4b", label: "Gemma 4 E4B", by: "Google", kind: "general", repo: "unsloth/gemma-4-E4B-it-GGUF", file: "gemma-4-E4B-it-Q4_K_M.gguf", size: 4.64 },
+  { id: "qwen3.5-9b", label: "Qwen3.5 9B", by: "Qwen", kind: "general", rec: true, repo: "unsloth/Qwen3.5-9B-GGUF", file: "Qwen3.5-9B-Q4_K_M.gguf", size: 5.29 },
+  { id: "qwen3.5-35b-a3b", label: "Qwen3.5 35B-A3B", by: "Qwen", kind: "general", rec: true, repo: "unsloth/Qwen3.5-35B-A3B-GGUF", file: "Qwen3.5-35B-A3B-Q4_K_M.gguf", size: 20.5, moe: true },
 ];
 const PORT = 18765;
 
@@ -73,23 +78,41 @@ function assess(hw) {
     return Object.assign({}, m, { fit, speed, disk, installed: isInstalled(m) });
   });
 }
-// 推荐：能「快」跑的里面最大的；没有就「中」等速度里最大的；再没有就最小的
-function recommend(list) {
-  const ok = list.filter(m => m.fit !== "no" && m.disk);
+// 推荐：能「快」跑的里面最大的；没有就「中」等速度里最大的；再没有就最小的。
+// 通用的只在 rec 的模型里挑；写代码的另外推荐一个（没有跑得动的就不推荐）。
+function recommend(list, kind = "general") {
+  const pool = list.filter(m => (kind === "code" ? m.kind === "code" : m.rec));
+  const ok = pool.filter(m => m.fit !== "no" && m.disk);
   const pick = speed => ok.filter(m => m.speed === speed).pop();
-  return (pick("fast") || pick("medium") || ok[0] || list[0]).id;
+  const m = pick("fast") || pick("medium") || (kind === "code" ? null : ok[0] || pool[0]);
+  return m ? m.id : null;
 }
 
 const modelPath = m => path.join(dirs().models, m.file);
 const isInstalled = m => { try { return fs.statSync(modelPath(m)).size > m.size * 0.9 * 1073741824; } catch (_) { return false; } };
 const serverExe = () => path.join(dirs().bin, process.platform === "win32" ? "llama-server.exe" : "llama-server");
 const binInstalled = () => fs.existsSync(serverExe());
+const buildFile = () => path.join(dirs().bin, "build.json");
+function binStale() {
+  try { return Date.now() - Date.parse(JSON.parse(fs.readFileSync(buildFile(), "utf8")).published) > 30 * 86400000; } catch (_) { return true; }
+}
 
 // ---- 下载 ----
+// 网络不稳时大文件常常下到一半断掉：自动等一下再从断点接着下，最多试 8 次；用户按了取消就不再重试
 async function download(url, dest, label, sizeHint) {
+  for (let attempt = 1; ; attempt++) {
+    try { return await downloadOnce(url, dest, label, sizeHint); } catch (e) {
+      if (e.name === "AbortError" || attempt >= 8 || /^download failed: 4\d\d/.test(e.message)) throw e;
+      state.text = label + " · " + "retry " + attempt + "…";
+      await new Promise(r => setTimeout(r, Math.min(30000, 2000 * attempt)));
+      if (abort && abort.signal.aborted) throw Object.assign(new Error("cancelled"), { name: "AbortError" });
+    }
+  }
+}
+async function downloadOnce(url, dest, label, sizeHint) {
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   const part = dest + ".part";
-  abort = new AbortController();
+  if (!abort || abort.signal.aborted) abort = new AbortController();
   // 断点续传：上次没下完的接着下（服务器支持的话回 206，只发剩下的部分）
   let have = 0;
   try { have = fs.statSync(part).size; } catch (_) { /* 从头下载 */ }
@@ -119,7 +142,8 @@ async function installBinary(hw) {
   const releases = await res.json();
   const want = new RegExp("^llama-.*-bin-win-" + flavor + "-x64\\.zip$");
   let asset = null;
-  for (const r of releases) { asset = (r.assets || []).find(a => want.test(a.name)); if (asset) break; }
+  let published = null;
+  for (const r of releases) { asset = (r.assets || []).find(a => want.test(a.name)); if (asset) { published = r.published_at; break; } }
   if (!asset) throw new Error("no llama.cpp build for Windows " + flavor);
   const zip = path.join(base, asset.name);
   await download(asset.browser_download_url, zip, "llama.cpp", asset.size);
@@ -136,6 +160,7 @@ async function installBinary(hw) {
     p.on("error", fail);
   });
   fs.rmSync(zip, { force: true });
+  try { fs.writeFileSync(buildFile(), JSON.stringify({ asset: asset.name, published: published || new Date().toISOString() })); } catch (_) { /* 只用来判断要不要更新 */ }
   // 有的版本把文件放在子文件夹里：找到 llama-server.exe 所在的地方
   if (!binInstalled()) {
     const found = findFile(dirs().bin, "llama-server.exe");
@@ -160,7 +185,8 @@ async function install(modelId, hw) {
   if (state.phase === "downloading") throw new Error("busy");
   Object.assign(state, { phase: "downloading", progress: 0, error: "", text: "" });
   try {
-    if (!binInstalled()) await installBinary(hw);
+    // 程序没装，或者要下新模型而程序已经旧了（新出的模型可能认不得）：先装最新的
+    if (!binInstalled() || (!isInstalled(m) && binStale())) { stop(); await installBinary(hw); }
     if (!isInstalled(m)) await download("https://huggingface.co/" + m.repo + "/resolve/main/" + m.file, modelPath(m), m.label, m.size * 1073741824);
     state.phase = "idle";
   } catch (e) {

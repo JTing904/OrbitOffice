@@ -11,7 +11,7 @@ const AGENTS = [
   {
     id: "planner", team: "product",
     brief: "Turn the request into a concrete plan and write it to docs/plan.md: goals, scope, the chosen technology, and a task breakdown where every owner is one of your actual teammates. Keep the first version small enough for this team to build right away. Do not write calendar schedules in weeks or person-days. When the work needs building, hand off to the designer only if the product has a user interface people look at (screens, pages, app windows, game visuals); for a command-line tool, script, API, library or data processing, hand off straight to the developer.", color: "#4c9a6a",
-    keywords: ["需求", "拆解", "拆分", "方案", "架构", "排期", "估时", "计划", "里程碑", "迭代",
+    keywords: ["需求", "拆解", "拆分", "方案", "架构", "排期", "估时", "计划", "规划", "里程碑", "迭代",
       "requirement", "breakdown", "break down", "plan", "estimate", "estimation", "roadmap", "milestone", "sprint", "ticket", "architecture"],
     zh: {
       name: "规划师", role: "需求与排期", skills: ["需求拆解", "技术方案", "任务估时", "风险评估"],
@@ -75,7 +75,7 @@ const AGENTS = [
   {
     id: "writer", team: "product",
     brief: "Write clear documentation or reports as Markdown files in the project.", color: "#9b6bd6",
-    keywords: ["文档", "周报", "日报", "汇报", "纪要", "会议", "说明", "注释", "总结", "写作", "邮件", "描述",
+    keywords: ["文档", "周报", "日报", "汇报", "纪要", "会议", "说明", "手册", "教程", "注释", "总结", "写作", "邮件", "描述",
       "doc", "docs", "document", "readme", "report", "weekly", "notes", "summary", "email", "write up", "changelog", "status report"],
     zh: {
       name: "笔杆", role: "文档与周报", skills: ["技术文档", "周报", "PR 描述", "会议纪要"],
@@ -123,7 +123,7 @@ const AGENTS = [
   {
     id: "developer", team: "engineering", color: "#2dd4bf",
     brief: "Implement the requested feature by writing real, working code in the project. Follow docs/plan.md and docs/design.md when they exist. Keep the code complete and runnable, and match the style of the existing code. In your summary say exactly how to run it.",
-    keywords: ["写代码", "实现", "开发", "功能", "编写", "函数", "接口", "页面", "脚本", "程序",
+    keywords: ["写代码", "实现", "开发", "功能", "编写", "函数", "接口", "页面", "网页", "网站", "脚本", "程序",
       "implement", "build", "code", "develop", "feature", "function", "api", "script", "program", "app"],
     zh: {
       name: "码哥", role: "开发工程师", skills: ["写代码", "实现功能", "接口", "重构"],
@@ -297,16 +297,24 @@ function keywordHit(text, kw) {
 }
 function pickAgent(title, deptId) {
   const text = title.toLowerCase();
-  let best = null, bestScore = 0;
   const pool = deptId ? deptAgents(deptId) : AGENTS;
-  for (const a of pool) {
+  // 「先做 A，然后再 B」：只看主句。后面的步骤由第一个人做完再交接，不该决定谁先接手
+  // （例如「做一个网页，然后做安全检查」不能整件交给安全员）
+  const main = text.split(/\b(?:and then|then|after that|afterwards|once (?:it'?s )?done)\b|然后|之后|接着|再让|再请|完成后/)[0];
+  const scoreAll = s => pool.map(a => {
     // 专职岗位（安全组）的关键词更明确，命中时优先于通用岗位
     // 任务里直接出现了员工的名字或岗位（例如「文案」），再加分：自建办公室里关键词常常互相重叠
-    const named = [agentName(a), agentRole(a)].filter(w => w && w.length >= 2).some(w => text.includes(w.toLowerCase())) ? 1.5 : 0;
-    const score = (a.keywords.reduce((n, k) => n + (keywordHit(text, k) ? 1 : 0), 0) + named) * (a.specialist ? 1.5 : 1);
-    if (score > bestScore) { best = a; bestScore = score; }
-  }
-  if (best) return best.id;
+    const named = [agentName(a), agentRole(a)].filter(w => w && w.length >= 2).some(w => s.includes(w.toLowerCase())) ? 1.5 : 0;
+    return { a, named, score: (a.keywords.reduce((n, k) => n + (keywordHit(s, k) ? 1 : 0), 0) + named) * (a.specialist ? 1.5 : 1) };
+  }).filter(x => x.score > 0);
+  const hits = scoreAll(main);
+  const lead = pool.find(a => a.lead);
+  // 有「然后」的多步任务，但看不出第一步该谁做：交给主持人分工（不按后面那一步去派）
+  if (!hits.length && main !== text && lead) return lead.id;
+  // 一句话里同时要好几种岗位来做（规划 + 开发 + 测试……），又没点名找谁：交给负责分工的主持人
+  if (lead && hits.length >= 3 && !hits.some(x => x.named)) return lead.id;
+  const best = hits.sort((x, y) => y.score - x.score)[0];
+  if (best) return best.a.id;
   // 没有关键词命中：派给手头任务最少的员工
   const busy = a => tasks.filter(x => x.agentId === a.id && x.status !== "done").length;
   const free = pool.filter(a => !a.specialist);
@@ -1032,7 +1040,7 @@ async function main() {
   $("hq").textContent = TEAMS.length + " teams · " + AGENTS.length + " agents · 1 brain";
   if (OFFICE.loadError) UI.toast(t("office.loadError", { error: OFFICE.loadError }), { kind: "warn", ttl: 12000 });
   // 编辑办公室后页面会重新载入：回到设置页的办公室那一段
-  try { if (sessionStorage.getItem("reopen") === "office") { sessionStorage.removeItem("reopen"); UI.open("settings"); setTimeout(() => { const s = document.getElementById("set-office"); if (s) s.scrollIntoView(); }, 50); } } catch (_) { /* 不可用时忽略 */ }
+  try { if (sessionStorage.getItem("reopen") === "office") { sessionStorage.removeItem("reopen"); UI.open("settings"); if (UI.settingsTab) UI.settingsTab("office"); setTimeout(() => { const s = document.getElementById("set-office"); if (s) s.scrollIntoView(); }, 50); } } catch (_) { /* 不可用时忽略 */ }
   syncTeamLabels();
 
   $("task-form").addEventListener("submit", e => {

@@ -704,3 +704,40 @@ textarea.set-input { resize: vertical; line-height: 1.55; font-family: inherit; 
 
 .brain-notes-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .brain-notes-head .brain-dept { flex: 0 1 180px; }
+
+/* 设置、大脑的分页 */
+.view-tabs { position: sticky; top: -1px; z-index: 2; display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 18px; padding: 4px; border-radius: 12px; background: rgba(13, 17, 32, .92); border: 1px solid var(--line); backdrop-filter: blur(10px); }
+.view-tab { padding: 7px 14px; border-radius: 9px; border: 0; background: transparent; color: var(--muted); font-size: 13px; }
+.view-tab:hover { color: var(--ink); background: rgba(255, 255, 255, .05); }
+.view-tab.active { color: var(--ink); background: rgba(255, 255, 255, .1); font-weight: 600; }
+.view-pane[hidden] { display: none; }
+.brain-results { display: block; margin: 22px 0 10px; }
+/* 「导入…」收起来的小菜单 */
+.more-menu { position: relative; }
+.more-menu summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; height: 100%; padding: 6px 12px; border-radius: 10px; border: 1px solid var(--line-strong); font-size: 12.5px; }
+.more-menu summary::-webkit-details-marker { display: none; }
+.more-items { position: absolute; z-index: 5; top: calc(100% + 6px); left: 0; display: grid; gap: 4px; padding: 6px; border-radius: 10px; background: #12172b; border: 1px solid var(--line-strong); box-shadow: 0 14px 40px rgba(0, 0, 0, .5); white-space: nowrap; }
+/* 小修 */
+.set-row .ghost, .set-inline .ghost { white-space: nowrap; }
+#task-agent { min-width: 150px; max-width: 240px; text-overflow: ellipsis; }
+
+/* 设置和大脑：弹窗高度固定，切换分页时不跳；菜单不被裁掉 */
+.sheet { height: min(780px, calc(100vh - 72px - var(--titlebar))); }
+.more-items .more-title { padding: 6px 8px 2px; font: 600 10.5px var(--mono); letter-spacing: .08em; color: var(--faint); }
+.more-items .ghost { justify-content: flex-start; text-align: left; }
+.office-tools .more-menu summary { padding: 7px 14px; }
+
+/* 本地 AI：通用 / 写代码 两页，模型厂商 */
+.local-kinds { display: flex; gap: 4px; margin: 10px 0 8px; padding: 3px; border-radius: 10px; border: 1px solid var(--line); width: fit-content; }
+.local-kinds .view-tab { padding: 5px 12px; font-size: 12.5px; }
+.local-name .local-by { color: var(--faint); font-size: 11.5px; }
+.local-more { margin-top: 6px; }
+/* 说明文字：行距松一点，好读 */
+.set-note { line-height: 1.5; }
+
+/* 分页栏贴住弹窗顶边，滚动时下面的内容不会从上方露出来 */
+.sheet-body:has(.view-tabs) { padding-top: 0; }
+.view-tabs { top: 0; margin-top: 8px; background: #0d1120; }
+
+/* 用 AI 写办公室/员工：输入框占满整行（textarea 默认只有约 20 个字宽） */
+.office-ai textarea.set-input { display: block; width: 100%; box-sizing: border-box; margin-bottom: 10px; }
