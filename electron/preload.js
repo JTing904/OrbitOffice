@@ -31,12 +31,13 @@ contextBridge.exposeInMainWorld("desktop", {
     removeRef: (id, name) => ipcRenderer.invoke("office:removeRef", id, name),
     pickFiles: () => ipcRenderer.invoke("office:pickFiles"),
     openDir: () => ipcRenderer.invoke("office:openDir"),
+    pickDeptFolder: dept => ipcRenderer.invoke("office:pickDeptFolder", dept),
   },
   files: {
-    read: rel => ipcRenderer.invoke("files:read", rel),
-    reveal: rel => ipcRenderer.invoke("files:reveal", rel),
-    notes: () => ipcRenderer.invoke("files:notes"),
-    memory: () => ipcRenderer.invoke("files:memory"),
+    read: (rel, dept) => ipcRenderer.invoke("files:read", rel, dept),
+    reveal: (rel, dept) => ipcRenderer.invoke("files:reveal", rel, dept),
+    notes: dept => ipcRenderer.invoke("files:notes", dept),
+    memory: dept => ipcRenderer.invoke("files:memory", dept),
   },
   // 员工真干活：在项目文件夹里读写文件
   agent: {

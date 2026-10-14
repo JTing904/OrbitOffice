@@ -447,18 +447,34 @@ ipcMain.handle("office:addRefFiles", async (e, id) => {
 ipcMain.handle("office:pickFiles", async e => { try { return { ok: true, files: await pickTextFiles(e, true) }; } catch (err) { return { ok: false, error: String(err.message || err) }; } });
 ipcMain.handle("office:openDir", () => { const d = office.dirs(userDir()).root; fs.mkdirSync(d, { recursive: true }); shell.openPath(d); return d; });
 
-// 查看项目文件夹里的文件（任务详情页用）
-ipcMain.handle("files:read", (_e, rel) => {
-  if (!config.projectDir) return { ok: false, error: "no-project" };
-  try { return { ok: true, text: readFile(config.projectDir, rel) }; } catch (e) { return { ok: false, error: String(e.message || e) }; }
+// 某个部门的工作文件夹（部门设了自己的就用它，否则用设置里的项目文件夹）
+const folderOf = deptId => office.deptFolder(userDir(), deptId ? String(deptId) : "", config.projectDir);
+// 部门：选它自己的工作文件夹
+ipcMain.handle("office:pickDeptFolder", async (e, deptId) => {
+  const r = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender), { properties: ["openDirectory", "createDirectory"] });
+  if (r.canceled || !r.filePaths[0]) return { ok: false, canceled: true };
+  try {
+    const info = office.load(userDir());
+    const departments = (info.departments || []).map(d => (d.id === deptId ? Object.assign({}, d, { folder: r.filePaths[0] }) : d));
+    office.write(userDir(), { departments });
+    return { ok: true, folder: r.filePaths[0] };
+  } catch (err) { return { ok: false, error: String(err.message || err) }; }
 });
-ipcMain.handle("files:notes", () => (config.projectDir ? readNotes(config.projectDir) : ""));
-ipcMain.handle("files:memory", () => (config.projectDir ? { count: memory.historyCount(config.projectDir) } : { count: 0 }));
+
+// 查看项目文件夹里的文件（任务详情页用；任务属于哪个部门，就在那个部门的文件夹里找）
+ipcMain.handle("files:read", (_e, rel, deptId) => {
+  const root = folderOf(deptId);
+  if (!root) return { ok: false, error: "no-project" };
+  try { return { ok: true, text: readFile(root, rel) }; } catch (e) { return { ok: false, error: String(e.message || e) }; }
+});
+ipcMain.handle("files:notes", (_e, deptId) => { const root = folderOf(deptId); return root ? readNotes(root) : ""; });
+ipcMain.handle("files:memory", (_e, deptId) => { const root = folderOf(deptId); return root ? { count: memory.historyCount(root) } : { count: 0 }; });
 // 出错时用默认值：记忆只是辅助，不能因为它让任务失败
 function safe(fn, fallback) { try { return fn(); } catch (_) { return fallback; } }
-ipcMain.handle("files:reveal", (_e, rel) => {
-  if (!config.projectDir) return false;
-  try { shell.showItemInFolder(resolveInside(config.projectDir, rel)); return true; } catch (_) { return false; }
+ipcMain.handle("files:reveal", (_e, rel, deptId) => {
+  const root = folderOf(deptId);
+  if (!root) return false;
+  try { shell.showItemInFolder(resolveInside(root, rel)); return true; } catch (_) { return false; }
 });
 
 // 同一家的备用模型：选定的模型额度用完或下线时先换这些，再换下一家。每小时最多查一次模型列表。
@@ -531,16 +547,17 @@ const cancelledRuns = new Set();   // 被用户取消的任务 id
 let askSeq = 0;
 
 ipcMain.handle("agent:available", () => ({
-  project: !!config.projectDir,
+  project: !!config.projectDir || safe(() => (office.load(userDir()).departments || []).some(d => d.folder && fs.existsSync(d.folder)), false),
   ai: (config.sources || []).some(s => s.enabled && s.model && (getKey(s) || isLocal(s.baseUrl))),
 }));
 ipcMain.handle("agent:run", async (e, req) => {
   req = req || {};
   const send = payload => { if (!e.sender.isDestroyed()) e.sender.send("agent:event", Object.assign({ taskId: req.taskId }, payload)); };
   const spent = { calls: 0, prompt: 0, completion: 0 };
+  const root = folderOf(req.deptId);
   try {
     const res = await runAgent({
-      projectDir: config.projectDir, title: String(req.title || "").slice(0, 2000),
+      projectDir: root, title: String(req.title || "").slice(0, 2000),
       agentName: String(req.agentName || "Agent").slice(0, 60), agentRole: String(req.agentRole || "").slice(0, 80),
       brief: String(req.brief || "").slice(0, 8000), context: String(req.context || "").slice(0, 3000),
       skills: Array.isArray(req.skills) ? req.skills.slice(0, 20).map(s => String(s).slice(0, 60)) : [],
@@ -548,7 +565,7 @@ ipcMain.handle("agent:run", async (e, req) => {
       purpose: String(req.purpose || "").slice(0, 2000), external: !!req.external,
       skillCatalog: safe(() => skills.catalog(), ""),
       skillHints: safe(() => skills.match(String(req.title || "") + " " + String(req.origin || "")).map(s => s.id).join(", "), ""),
-      memory: config.projectDir ? safe(() => memory.memoryText(config.projectDir, String(req.title || "") + " " + String(req.origin || "")), "") : "", origin: String(req.origin || "").slice(0, 600),
+      memory: root ? safe(() => memory.memoryText(root, String(req.title || "") + " " + String(req.origin || "")), "") : "", origin: String(req.origin || "").slice(0, 600),
       team: String(req.team || "").slice(0, 800), allowHandoff: !!req.allowHandoff, caps: currentCaps(),
       chat: !!req.chat, history: Array.isArray(req.history) ? req.history.slice(-8) : [],
       scope: req.scope && Array.isArray(req.scope.allow) ? { allow: req.scope.allow.slice(0, 20).map(String), hint: String(req.scope.hint || "").slice(0, 200) } : null,
@@ -582,9 +599,9 @@ ipcMain.handle("agent:run", async (e, req) => {
       }),
     });
     // 记进项目记忆（聊天里只回答问题、什么都没动的不记）；笔记太长时在后台整理
-    if (config.projectDir && (!req.chat || (res.files || []).length) && res.error !== "cancelled") {
-      safe(() => memory.appendHistory(config.projectDir, { agent: req.agentName, role: req.agentRole, title: req.title, summary: res.summary || res.detail || res.error, files: res.files, ok: res.ok && !res.blocked }));
-      memory.compactNotes(config.projectDir, text => summarizeNotes(text, {
+    if (root && (!req.chat || (res.files || []).length) && res.error !== "cancelled") {
+      safe(() => memory.appendHistory(root, { agent: req.agentName, role: req.agentRole, title: req.title, summary: res.summary || res.detail || res.error, files: res.files, ok: res.ok && !res.blocked }));
+      memory.compactNotes(root, text => summarizeNotes(text, {
         sources: () => config.sources || [], alts: altModels, call: (source, pathname, body) => callSource(source, pathname, body, 90000),
         coolUntil: key => (config.cool && config.cool[key]) || 0,
       })).catch(() => { /* 整理失败就保持原样，下次再试 */ });

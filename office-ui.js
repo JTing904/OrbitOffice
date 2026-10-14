@@ -28,7 +28,20 @@ const OfficeUI = (() => {
     if (window.desktop && desktop.windowControl) desktop.windowControl("reload"); else location.reload();
     return true;
   }
-  const teamsPlain = () => TEAMS.map(x => ({ id: x.id, name: teamName(x), color: x.color, style: x.style || "" }));
+  const teamsPlain = () => TEAMS.map(x => ({ id: x.id, name: teamName(x), color: x.color, style: x.style || "", dept: x.dept || "" }));
+  const deptsPlain = () => DEPTS.map(d => Object.assign({}, d));
+  const DEPT_COLORS = ["#2dd4bf", "#f472b6", "#f59e0b", "#60a5fa", "#a78bfa", "#34d399"];
+  // 第一次分部门：现有的组都放进「部门 1」（沿用办公室的说明），再加一个空的新部门
+  function startDepartments(ids) {
+    const first = { id: OfficeDef.uniqueId("", ids, "dept"), name: t("dept.newName", { n: 1 }), color: DEPT_COLORS[0], purpose: OFFICE.purpose, folder: "" };
+    ids.add(first.id);
+    return { depts: [first], teams: teamsPlain().map(x => Object.assign(x, { dept: first.id })) };
+  }
+  function newDept(ids, n, purpose) {
+    const d = { id: OfficeDef.uniqueId("", ids, "dept"), name: t("dept.newName", { n }), color: DEPT_COLORS[(n - 1) % DEPT_COLORS.length], purpose: purpose || "", folder: "" };
+    ids.add(d.id);
+    return d;
+  }
 
   // ---- 整段 ----
   function build(section) {
@@ -67,11 +80,12 @@ const OfficeUI = (() => {
     // 换成某个现成的模板（软件团队、内容团队）
     const tpl = el("select", "set-select office-template");
     for (const name of OfficeDef.TEMPLATES) tpl.append(new Option(t("office.tpl." + name), name));
-    tools.append(tpl, btn("ghost danger", t("office.useTemplate"), () => useTemplate(tpl.value)));
+    tools.append(tpl, btn("ghost", t("dept.addTemplate"), () => templateAsDept(tpl.value)), btn("ghost danger", t("office.useTemplate"), () => useTemplate(tpl.value)));
     box.append(tools);
     if (editing && editing.kind === "office-ai") box.append(officeAiPanel());
     if (busyText) box.append(el("p", "set-status", busyText));
 
+    box.append(deptBlock());
     for (const tm of TEAMS) box.append(teamBlock(tm));
     if (TEAMS.length < MAX_TEAMS) box.append(btn("ghost office-add-team", t("office.addTeam"), addTeam));
 
@@ -89,6 +103,57 @@ const OfficeUI = (() => {
       else importTexts(read);
     };
     if (box.parentNode) box.parentNode.scrollTop = keep;
+  }
+
+  // ---- 部门：一个世界里几种不同的工作，各有说明、主持人和工作文件夹 ----
+  function deptBlock() {
+    const wrap = el("div", "office-depts");
+    wrap.append(el("span", "eyebrow", t("dept.title")), el("p", "set-note", t(DEPTS.length ? "dept.note" : "dept.noneYet")));
+    for (const d of DEPTS) {
+      const row = el("div", "office-dept-row");
+      row.style.setProperty("--dc", d.color);
+      const color = el("input", "swatch");
+      color.type = "color"; color.value = d.color;
+      color.addEventListener("change", () => saveStructural({ departments: deptsPlain().map(x => x.id === d.id ? Object.assign(x, { color: color.value }) : x) }));
+      const name = el("input", "set-input office-team-name");
+      name.type = "text"; name.value = d.name;
+      // 名字、说明、文件夹只改文字：直接生效，不用重搭 3D
+      const saveText = async patch => {
+        const r = await api().write({ departments: deptsPlain().map(x => x.id === d.id ? Object.assign(x, patch) : x) });
+        if (!r || r.ok === false) return fail(r);
+        Object.assign(d, patch);
+        if (typeof buildSelectAndExamples === "function") buildSelectAndExamples();
+        syncTeamLabels();
+        UI.toast(t("office.saved"), { kind: "ok", ttl: 2500 });
+      };
+      name.addEventListener("change", () => name.value.trim() && saveText({ name: name.value.trim() }));
+      const n = AGENTS.filter(a => (deptOf(a) || {}).id === d.id).length;
+      const del = btn("ghost small danger", t("office.removeTeam"), async () => {
+        if (!window.confirm(t("dept.removeConfirm", { name: d.name }))) return;
+        await saveStructural({ departments: deptsPlain().filter(x => x.id !== d.id), teams: teamsPlain().map(x => x.dept === d.id ? Object.assign(x, { dept: "" }) : x) });
+      });
+      const head = el("div", "office-team-head");
+      head.append(color, name, el("span", "office-count", t("dept.count", { n, lead: n ? agentName(deptLead(d.id)) : "—" })), del);
+      const purpose = el("textarea", "set-input wide office-purpose");
+      purpose.rows = 2; purpose.value = d.purpose || ""; purpose.placeholder = t("dept.purpose.ph");
+      purpose.addEventListener("change", () => saveText({ purpose: purpose.value.trim() }));
+      const folderLine = el("div", "set-inline office-dept-folder");
+      folderLine.append(el("code", "set-path", d.folder || t("dept.folder.default")), btn("ghost small", t("dept.folder.pick"), async () => {
+        const r = await api().pickDeptFolder(d.id);
+        if (r && r.ok) { d.folder = r.folder; render(); } else if (r && !r.canceled) fail(r);
+      }));
+      row.append(head, purpose, folderLine);
+      wrap.append(row);
+    }
+    if (DEPTS.length < 8) wrap.append(btn("ghost small", t("dept.add"), async () => {
+      const ids = taken();
+      DEPTS.forEach(d => ids.add(d.id));
+      if (!DEPTS.length) {
+        const s = startDepartments(ids);
+        await saveStructural({ departments: s.depts.concat(newDept(ids, 2, "")), teams: s.teams });
+      } else await saveStructural({ departments: deptsPlain().concat(newDept(ids, DEPTS.length + 1, "")) });
+    }));
+    return wrap;
   }
 
   // ---- 一个办公室（团队）----
@@ -122,7 +187,17 @@ const OfficeUI = (() => {
       cancelTasksOf(members.map(a => a.id));
       await saveStructural({ teams: teamsPlain().filter(x => x.id !== tm.id), remove: members.map(a => a.id) });
     });
-    head.append(color, name, style, el("span", "office-count", t("team.count", { n: members.length })), del);
+    head.append(color, name, style);
+    if (DEPTS.length) {
+      const dept = el("select", "set-select office-dept");
+      dept.append(new Option(t("dept.none"), ""));
+      for (const d of DEPTS) dept.append(new Option(d.name, d.id));
+      dept.value = tm.dept || "";
+      dept.title = t("dept.of");
+      dept.addEventListener("change", () => saveStructural({ teams: teamsPlain().map(x => x.id === tm.id ? Object.assign(x, { dept: dept.value }) : x) }));
+      head.append(dept);
+    }
+    head.append(el("span", "office-count", t("team.count", { n: members.length })), del);
     wrap.append(head);
 
     for (const a of members) {
@@ -381,7 +456,16 @@ const OfficeUI = (() => {
       });
     });
     const change = { teams, agents };
-    if (replace) { change.remove = AGENTS.map(a => a.id); change.purpose = o.purpose || ""; cancelTasksOf(AGENTS.map(a => a.id)); }
+    if (replace) { change.remove = AGENTS.map(a => a.id); change.purpose = o.purpose || ""; change.departments = []; cancelTasksOf(AGENTS.map(a => a.id)); }
+    else {
+      // 加在后面 = 新开一个部门，用 AI 写的说明；原来没分部门的话，原来的组先放进「部门 1」
+      DEPTS.forEach(d => ids.add(d.id));
+      let depts = deptsPlain(), old = teamsPlain();
+      if (!depts.length) { const s = startDepartments(ids); depts = s.depts; old = s.teams; }
+      const d = newDept(ids, depts.length + 1, o.purpose || "");
+      change.departments = depts.concat(d);
+      change.teams = old.concat(teams.slice(old.length).map(x => Object.assign(x, { dept: d.id })));
+    }
     // 删除和写入在同一次里：先删旧的再写新的，id 不会冲突（新 id 是在空集合里生成的，可能和旧的同名，所以分两步）
     if (replace) {
       if (working()) return UI.toast(t("office.busy"), { kind: "warn", ttl: 9000 });
@@ -434,13 +518,26 @@ const OfficeUI = (() => {
     UI.toast(t("office.refs.added", { n: files.length, name: agentName(agentById(id)) }), { kind: "ok", ttl: 4000 });
   }
 
+  async function templateAsDept(name) {
+    const ids = taken();
+    DEPTS.forEach(d => ids.add(d.id));
+    let depts = deptsPlain(), old = teamsPlain();
+    if (!depts.length) { const s = startDepartments(ids); depts = s.depts; old = s.teams; }
+    const def = OfficeDef.fromTemplate(name, LANG);
+    const d = newDept(ids, depts.length + 1, def.purpose);
+    d.name = t("office.tpl." + name).replace(/^[^：:]+[：:]\s*/, "");
+    const added = OfficeDef.intoDepartment(def, d.id, ids);
+    if (old.length + added.teams.length > MAX_TEAMS) return UI.toast(t("office.e.tooManyTeams", { n: MAX_TEAMS }), { kind: "warn" });
+    await saveStructural({ departments: depts.concat(d), teams: old.concat(added.teams), agents: added.agents });
+  }
+
   async function useTemplate(name) {
     if (!window.confirm(t("office.resetConfirm", { name: t("office.tpl." + name) }))) return;
     if (working()) return UI.toast(t("office.busy"), { kind: "warn", ttl: 9000 });
     cancelTasksOf(AGENTS.map(a => a.id));
     const r1 = await api().write({ remove: AGENTS.map(a => a.id) });
     if (!r1 || r1.ok === false) return fail(r1);
-    await saveStructural(OfficeDef.fromTemplate(name, LANG));
+    await saveStructural(Object.assign(OfficeDef.fromTemplate(name, LANG), { departments: [] }));
   }
 
   return { build, render };

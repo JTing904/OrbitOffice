@@ -22,7 +22,7 @@ function load(userData) {
   const d = dirs(userData);
   if (!fs.existsSync(d.file)) return { exists: false, dir: d.root };
   const info = readInfo(d.file);
-  const teams = info.teams, purpose = info.purpose;
+  const teams = info.teams, purpose = info.purpose, departments = info.departments;
   const agents = [];
   try {
     for (const f of fs.readdirSync(d.agents).filter(f => f.endsWith(".md")).sort()) {
@@ -32,15 +32,28 @@ function load(userData) {
       agents.push({ id, text, refs: listRefs(userData, id) });
     }
   } catch (_) { /* 还没有员工 */ }
-  return { exists: true, dir: d.root, teams, purpose, agents };
+  return { exists: true, dir: d.root, teams, purpose, departments, agents };
 }
 
-// office.json：{ version, purpose（这个办公室是做什么的）, teams }。文件坏了就当作空的，页面会用模板补上。
+// office.json：{ version, purpose（这个办公室是做什么的）, departments（部门）, teams（每个组属于一个部门）}。文件坏了就当作空的，页面会用模板补上。
+// department: { id, name, color, purpose（这个部门做什么）, folder（这个部门的工作文件夹，空 = 用设置里的项目文件夹）}
 function readInfo(file) {
   try {
     const j = JSON.parse(fs.readFileSync(file, "utf8"));
-    return { teams: Array.isArray(j.teams) ? j.teams : [], purpose: typeof j.purpose === "string" ? j.purpose : "" };
-  } catch (_) { return { teams: [], purpose: "" }; }
+    return { teams: Array.isArray(j.teams) ? j.teams : [], purpose: typeof j.purpose === "string" ? j.purpose : "", departments: Array.isArray(j.departments) ? j.departments : [] };
+  } catch (_) { return { teams: [], purpose: "", departments: [] }; }
+}
+const cleanDept = d => ({
+  id: d.id, name: String(d.name || d.id).slice(0, 40), color: /^#[0-9a-f]{6}$/i.test(d.color) ? d.color : "#67e8f9",
+  purpose: String(d.purpose || "").slice(0, 2000), folder: typeof d.folder === "string" && path.isAbsolute(d.folder) ? d.folder : "",
+});
+// 部门的工作文件夹：设了而且存在才用，否则用设置里的项目文件夹
+function deptFolder(userData, deptId, fallback) {
+  if (!deptId || !ID.test(deptId)) return fallback;
+  const d = dirs(userData);
+  if (!fs.existsSync(d.file)) return fallback;
+  const dept = readInfo(d.file).departments.find(x => x.id === deptId);
+  return dept && dept.folder && fs.existsSync(dept.folder) ? dept.folder : fallback;
 }
 
 function listRefs(userData, id) {
@@ -55,13 +68,15 @@ function write(userData, change) {
   const d = dirs(userData);
   fs.mkdirSync(d.agents, { recursive: true });
   // 只改传进来的部分：只改团队时保留原来的「做什么的」，反之亦然
-  if (Array.isArray(change.teams) || typeof change.purpose === "string" || !fs.existsSync(d.file)) {
-    const info = fs.existsSync(d.file) ? readInfo(d.file) : { teams: [], purpose: "" };
+  if (Array.isArray(change.teams) || typeof change.purpose === "string" || Array.isArray(change.departments) || !fs.existsSync(d.file)) {
+    const info = fs.existsSync(d.file) ? readInfo(d.file) : { teams: [], purpose: "", departments: [] };
+    const departments = (Array.isArray(change.departments) ? change.departments : info.departments).filter(x => x && ID.test(x.id)).slice(0, 8).map(cleanDept);
     const teams = (Array.isArray(change.teams) ? change.teams : info.teams).filter(t => t && ID.test(t.id)).slice(0, 12).map(t => ({
       id: t.id, name: String(t.name || t.id).slice(0, 40), color: /^#[0-9a-f]{6}$/i.test(t.color) ? t.color : "#67e8f9", style: String(t.style || "").slice(0, 30),
+      dept: departments.some(x => x.id === t.dept) ? t.dept : "",
     }));
     const purpose = typeof change.purpose === "string" ? change.purpose.slice(0, 2000) : info.purpose;
-    fs.writeFileSync(d.file, JSON.stringify({ version: 1, purpose, teams }, null, 2));
+    fs.writeFileSync(d.file, JSON.stringify({ version: 1, purpose, departments, teams }, null, 2));
   }
   for (const a of change.agents || []) {
     if (!a || !ID.test(a.id)) throw new Error("bad id: " + (a && a.id));
@@ -106,4 +121,4 @@ function refsText(userData, id) {
   return out.trim();
 }
 
-module.exports = { load, write, addRef, removeRef, refsText, dirs, REF_NAME };
+module.exports = { deptFolder, load, write, addRef, removeRef, refsText, dirs, REF_NAME };

@@ -216,7 +216,9 @@ let logs = [];     // { time, key, vars }，按当前语言渲染
 let nextId = 1;
 let mode = "auto";
 let edits = {};    // 旧版本：用户在设置里改过的员工信息。第一次写成 .md 文件时带过去，之后不再使用
-const OFFICE = { purpose: "", dir: "", fromFiles: false };   // 这个办公室是做什么的；定义文件放在哪
+const OFFICE = { purpose: "", dir: "", fromFiles: false };
+// 部门：一个世界里放几种不同的工作（例如软件部、内容部），各有自己的说明、主持人和工作文件夹。没有设部门时整个办公室就是一个部门。
+const DEPTS = [];   // { id, name, color, purpose, folder }   // 这个办公室是做什么的；定义文件放在哪
 let agentsVersion = 0;   // 员工信息或语言变化时 +1，用来刷新界面文字
 
 function load() {
@@ -263,6 +265,12 @@ const agentRole = a => editOf(a).role || a[LANG].role;
 const agentSkills = a => (editOf(a).skills && editOf(a).skills.length ? editOf(a).skills : a[LANG].skills);
 const agentColor = a => editOf(a).color || a.color;
 const teamName = x => x.name || x[LANG];
+const deptOf = a => { const tm = TEAMS.find(x => x.id === (a && a.team)); return (tm && DEPTS.find(d => d.id === tm.dept)) || null; };
+const sameDept = (a, b) => (deptOf(a) || {}).id === (deptOf(b) || {}).id;
+const deptAgents = deptId => AGENTS.filter(a => !deptId || (deptOf(a) || {}).id === deptId);
+// 部门的主持人：标了 lead 的；没有就是部门里第一个员工
+const deptLead = deptId => { const list = deptAgents(deptId); return list.find(a => a.lead) || list[0] || AGENTS[0]; };
+const purposeOf = a => { const d = deptOf(a); return (d && d.purpose) || OFFICE.purpose; };
 const taskTitle = o => (o.tpl ? t(o.tpl, { topic: o.topic }) : o.title);
 const snap = task => ({ title: task.title, tpl: task.tpl, topic: task.topic });
 
@@ -287,10 +295,11 @@ function keywordHit(text, kw) {
   const esc = kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(kw.length <= 3 ? "\\b" + esc + "\\b" : "\\b" + esc).test(text);
 }
-function pickAgent(title) {
+function pickAgent(title, deptId) {
   const text = title.toLowerCase();
   let best = null, bestScore = 0;
-  for (const a of AGENTS) {
+  const pool = deptId ? deptAgents(deptId) : AGENTS;
+  for (const a of pool) {
     // 专职岗位（安全组）的关键词更明确，命中时优先于通用岗位
     // 任务里直接出现了员工的名字或岗位（例如「文案」），再加分：自建办公室里关键词常常互相重叠
     const named = [agentName(a), agentRole(a)].filter(w => w && w.length >= 2).some(w => text.includes(w.toLowerCase())) ? 1.5 : 0;
@@ -300,7 +309,8 @@ function pickAgent(title) {
   if (best) return best.id;
   // 没有关键词命中：派给手头任务最少的员工
   const busy = a => tasks.filter(x => x.agentId === a.id && x.status !== "done").length;
-  return AGENTS.filter(a => !a.specialist).sort((a, b) => busy(a) - busy(b))[0].id;
+  const free = pool.filter(a => !a.specialist);
+  return (free.length ? free : pool).slice().sort((a, b) => busy(a) - busy(b))[0].id;
 }
 
 // 当前模式下，这个任务是否需要用户批准；返回原因（reason.* 的后缀），空字符串表示不需要
@@ -340,7 +350,9 @@ function announcePending(task) {
 }
 
 function addTask(title, agentChoice, handoff) {
-  const agentId = agentChoice === PICK_AUTO ? pickAgent(title) : agentChoice;
+  // 「自动分配 · 某部门」的值是 auto:<部门 id>
+  const deptAuto = String(agentChoice || "").startsWith(PICK_AUTO + ":") ? agentChoice.slice(PICK_AUTO.length + 1) : "";
+  const agentId = agentChoice === PICK_AUTO || deptAuto ? pickAgent(title, deptAuto) : agentChoice;
   const task = createTask(title, agentId, { handoff });
   tasks.push(task);
   addLog(task.status === "pending" ? "log.assignPending" : "log.assign", { task: snap(task), a: agentId, reason: task.reason });
@@ -452,7 +464,15 @@ function realError(res) {
   return I18N[LANG][k] ? t(k, { detail: res.detail || "" }) : (res.error || "") + (res.detail ? " " + res.detail : "");
 }
 // 告诉 AI 有哪些同事：id（交接时用）、名字（职责说明里常用名字称呼同事）、岗位
-const teamList = exceptId => AGENTS.filter(x => x.id !== exceptId).map(x => x.id + ": " + agentName(x) + (agentRole(x) ? ", " + agentRole(x) : "")).join("; ");
+const teamList = exceptId => {
+  const me = exceptId && AGENTS.find(a => a.id === exceptId);
+  const line = x => x.id + ": " + agentName(x) + (agentRole(x) ? ", " + agentRole(x) : "");
+  if (!DEPTS.length || !me) return AGENTS.filter(x => x.id !== exceptId).map(line).join("; ");
+  const mine = AGENTS.filter(x => x.id !== exceptId && sameDept(x, me)).map(line);
+  const others = DEPTS.filter(d => d.id !== (deptOf(me) || {}).id && deptAgents(d.id).length)
+    .map(d => line(deptLead(d.id)) + " (lead of the " + d.name + " department — only for work that belongs to that department)");
+  return mine.concat(others).join("; ");
+};
 
 function startReal(task, a) {
   // 交接出来的任务：带上用户最初的要求，让接手的人知道整件事的目标，而不只是眼前这一步
@@ -465,7 +485,7 @@ function startReal(task, a) {
   desktop.agent.run({ taskId: task.id, title: taskTitle(task), agentName: agentName(a), agentRole: agentRole(a), brief: a.brief, context: task.context || "", origin: root !== task ? taskTitle(root) : "",
     scope: scopeOf(a), localOnly: !!a.localOnly, chat: !!task.chat, history: task.history || [],
     team: teamList(a.id), allowHandoff: !!task.handoff && (task.depth || 0) < 6,
-    agentId: a.id, skills: agentSkills(a), purpose: OFFICE.purpose, external: !!a.external,
+    agentId: a.id, skills: agentSkills(a), purpose: purposeOf(a), external: !!a.external, deptId: (deptOf(a) || {}).id || "",
     mode, lang: LANG }).then(res => {
     task.status = "done";
     task.doneAt = Date.now();
@@ -584,6 +604,11 @@ function proposeHandoff(cur, a, h) {
   if (a.handsTo && agentExists(a.handsTo) && h.to !== a.handsTo) h = { to: a.handsTo, task: a.handoffTask || h.task };
   const instead = skipsDesign(cur, h);
   if (instead) h = { to: instead, task: h.task };
+  if (DEPTS.length) {
+    const target = AGENTS.find(x => x.id === h.to);
+    const lead = target && deptLead((deptOf(target) || {}).id);
+    if (target && !sameDept(target, a) && lead && lead.id !== target.id) h = { to: lead.id, task: h.task };
+  }
   const next = createTask(h.task, h.to, { handoff: true, from: a.id, parent: cur.id, topic: cur.topic });
   next.depth = (cur.depth || 0) + 1;
   next.context = (agentName(a) + " (" + agentRole(a) + "): " + (cur.result || "")).slice(0, 3000);
@@ -798,9 +823,19 @@ function renderModes() {
 function buildSelectAndExamples() {
   const sel = $("task-agent");
   const v = sel.value || PICK_AUTO;
-  sel.replaceChildren(new Option(t("cmd.auto"), PICK_AUTO));
-  AGENTS.forEach(a => sel.append(new Option(`${agentName(a)} · ${agentRole(a)}`, a.id)));
-  sel.value = v;
+  sel.replaceChildren(new Option(DEPTS.length ? t("cmd.autoAll") : t("cmd.auto"), PICK_AUTO));
+  if (DEPTS.length) {
+    for (const d of DEPTS) sel.append(new Option(t("cmd.autoDept", { name: d.name }), PICK_AUTO + ":" + d.id));
+    for (const d of DEPTS.concat([{ id: "", name: t("dept.none") }])) {
+      const list = AGENTS.filter(a => ((deptOf(a) || {}).id || "") === d.id);
+      if (!list.length) continue;
+      const g = document.createElement("optgroup");
+      g.label = d.name;
+      list.forEach(a => g.append(new Option(`${agentName(a)} · ${agentRole(a)}`, a.id)));
+      sel.append(g);
+    }
+  } else AGENTS.forEach(a => sel.append(new Option(`${agentName(a)} · ${agentRole(a)}`, a.id)));
+  sel.value = [...sel.options].some(o => o.value === v) ? v : PICK_AUTO;
 
   const ex = $("examples");
   ex.replaceChildren();
@@ -917,7 +952,10 @@ function updateStats() {
 
 function syncTeamLabels() {
   if (!(window.Office3D && Office3D.ready)) return;
-  for (const tm of TEAMS) Office3D.setTeamLabel(tm.id, teamName(tm), t("team.count", { n: AGENTS.filter(a => a.team === tm.id).length }));
+  for (const tm of TEAMS) {
+    const d = DEPTS.find(x => x.id === tm.dept);   // 分了部门时组名前面加上部门名
+    Office3D.setTeamLabel(tm.id, (d ? d.name + " · " : "") + teamName(tm), t("team.count", { n: AGENTS.filter(a => a.team === tm.id).length }));
+  }
 }
 
 function render(force) {
@@ -953,7 +991,10 @@ async function loadOffice() {
   if (!r || r.ok === false || !r.exists) { console.error("office load failed", r); OFFICE.loadError = (r && r.error) || "load"; return; }
   OFFICE.dir = r.dir;
   OFFICE.purpose = r.purpose || "";
-  const teams = (r.teams || []).map(x => ({ id: x.id, name: x.name, color: x.color, style: x.style }));
+  DEPTS.splice(0, DEPTS.length, ...(r.departments || []));
+  const deptIndex = id => { const i = DEPTS.findIndex(d => d.id === id); return i < 0 ? 999 : i; };
+  const teams = (r.teams || []).map((x, i) => ({ id: x.id, name: x.name, color: x.color, style: x.style, dept: DEPTS.some(d => d.id === x.dept) ? x.dept : "", i }))
+    .sort((a, b) => deptIndex(a.dept) - deptIndex(b.dept) || a.i - b.i);
   if (!teams.length) { OFFICE.loadError = "no-teams"; return; }
   const agents = (r.agents || []).map(f => OfficeDef.toAgent(f, teams, LANG));
   if (!agents.length) { OFFICE.loadError = "no-agents"; return; }
@@ -979,7 +1020,8 @@ async function main() {
   await loadOffice();
 
   const in3d = window.Office3D && Office3D.init
-    ? await Office3D.init($("office"), AGENTS.map(a => ({ id: a.id, team: a.team, color: agentColor(a), look: a.look && a.look.acc ? a.look : null })), TEAMS,
+    ? await Office3D.init($("office"), AGENTS.map(a => ({ id: a.id, team: a.team, color: agentColor(a), look: a.look && a.look.acc ? a.look : null })),
+      TEAMS.map(x => Object.assign({}, x, { deptColor: (DEPTS.find(d => d.id === x.dept) || {}).color || null, deptId: x.dept || "" })),
       { pick: id => UI.selectAgent(id), team: id => UI.focusTeam(id), brain: () => UI.open("brain") })
     : false;
 

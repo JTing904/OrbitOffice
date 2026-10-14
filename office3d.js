@@ -194,7 +194,7 @@
     for (const isl of islands) {
       const d = Math.hypot(isl.x - bx, isl.z - bz);
       const start = new THREE.Vector3(bx + (isl.x - bx) / d * 1.95, padY, bz + (isl.z - bz) / d * 1.95);
-      addLink(start, islandPoint(isl, 0, -ISLAND_D / 2 - 0.1), isl.color, 0.75, 3);
+      addLink(start, islandPoint(isl, 0, -ISLAND_D / 2 - 0.1), isl.deptColor || isl.color, 0.75, 3);   // 分了部门时用部门的颜色
     }
     // 相邻的岛：用各自朝向对方的那一侧相连
     const side = (a, b) => {
@@ -203,6 +203,8 @@
     };
     for (let i = 0; i < (islands.length < 3 ? islands.length - 1 : islands.length); i++) {
       const a = islands[i], b = islands[(i + 1) % islands.length];
+      // 分了部门：只连同一个部门的相邻岛（用部门颜色），不同部门之间不连，看上去就是几个分开的区
+      if (a.deptId || b.deptId) { if (a.deptId === b.deptId) addLink(side(a, b), side(b, a), a.deptColor || "#8fa0d8", 0.55, 2); continue; }
       addLink(side(a, b), side(b, a), "#8fa0d8", 0.3, 1);
     }
   }
@@ -246,7 +248,7 @@
     O.layer.append(tl);
     anchors.push({ el: tl, obj: g, off: new THREE.Vector3(0, -0.2, D / 2 + 0.3), below: true });
 
-    const isl = { id: team.id, x: px, z: pz, angle, color: team.color, group: g, phase: idx * 2.1, spots: SPOT_DEFS.map(p => Object.assign({ taken: null }, p)) };
+    const isl = { id: team.id, x: px, z: pz, angle, color: team.color, deptColor: team.deptColor || null, deptId: team.deptId || "", group: g, phase: idx * 2.1, spots: SPOT_DEFS.map(p => Object.assign({ taken: null }, p)) };
     islands.push(isl);
     const desks = DESK_LAYOUTS[Math.min(members.length, MAX_PER_ISLAND)] || DESK_LAYOUTS[1];
     members.slice(0, desks.length).forEach((a, i) => buildStation(a, isl, desks[i][0], desks[i][1]));

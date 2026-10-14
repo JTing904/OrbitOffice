@@ -228,12 +228,26 @@ const UI = (() => {
     // 项目笔记：员工记下的决定，之后的任务会自动读到
     const notes = el("section", "td-block");
     const notesText = el("div", "td-text", t("brain.notes.none"));
-    notes.append(el("span", "eyebrow", t("brain.notes")), notesText);
-    if (window.desktop && desktop.files && desktop.files.notes) desktop.files.notes().then(text => { if (text) notesText.textContent = text; });
+    const notesHead = el("div", "brain-notes-head");
+    notesHead.append(el("span", "eyebrow", t("brain.notes")));
+    notes.append(notesHead, notesText);
     // 项目记忆：这个项目里记住了多少次工作（员工接新任务时会从里面找相关的）
     const memLine = el("p", "set-note brain-memory");
-    if (window.desktop && desktop.files && desktop.files.memory) desktop.files.memory().then(m => { memLine.textContent = t("brain.memory", { n: m.count }); });
     notes.append(memLine);
+    // 笔记和记忆跟着工作文件夹走：分了部门时可以切换看哪个部门的
+    const loadNotes = dept => {
+      if (!(window.desktop && desktop.files && desktop.files.notes)) return;
+      notesText.textContent = t("brain.notes.none");
+      desktop.files.notes(dept).then(text => { if (text) notesText.textContent = text; });
+      desktop.files.memory(dept).then(m => { memLine.textContent = t("brain.memory", { n: m.count }); });
+    };
+    if (DEPTS.length) {
+      const pick = el("select", "set-select brain-dept");
+      for (const d of DEPTS) pick.append(new Option(d.name, d.id));
+      pick.addEventListener("change", () => loadNotes(pick.value));
+      notesHead.append(pick);
+      loadNotes(DEPTS[0].id);
+    } else loadNotes("");
     const skillBox = el("section", "td-block skills");
     if (window.desktop && desktop.skills) buildSkills(skillBox);
     v.append(head, notes, skillBox, q, filters, list);
@@ -308,7 +322,7 @@ const UI = (() => {
       .map(e => "- " + e.type + (e.kind ? ":" + e.kind : "") + " " + String(e.path || e.text || "").replace(/\s+/g, " ").slice(0, 200)).slice(0, 60).join("\n");
     let files = "";
     for (const f of (task.files || []).slice(0, 5)) {
-      const r = await desktop.files.read(f);
+      const r = await desktop.files.read(f, (deptOf(a) || {}).id);
       if (r.ok) files += "\n\n### File: " + f + "\n" + r.text.slice(0, 2500);
     }
     const text = "Task: " + taskTitle(task) + "\nDone by: " + agentName(a) + " (" + agentRole(a) + ")\n\nSteps taken:\n" + steps +
@@ -570,10 +584,10 @@ const UI = (() => {
       const toggle = button("ghost small", t(detailOpenFile === f ? "td.hide" : "td.view"), () => { detailOpenFile = detailOpenFile === f ? null : f; renderTask(); });
       const line = el("div", "td-file-head");
       line.append(name, toggle);
-      if (window.desktop && desktop.files) line.append(button("ghost small", t("td.reveal"), () => desktop.files.reveal(f)));
+      if (window.desktop && desktop.files) line.append(button("ghost small", t("td.reveal"), () => desktop.files.reveal(f, (deptOf(a) || {}).id)));
       rowEl.append(line, viewer);
       if (detailOpenFile === f && window.desktop && desktop.files) {
-        desktop.files.read(f).then(r => { viewer.textContent = r.ok ? r.text : t("td.readfail", { error: r.error }); });
+        desktop.files.read(f, (deptOf(a) || {}).id).then(r => { viewer.textContent = r.ok ? r.text : t("td.readfail", { error: r.error }); });
       }
       files.append(rowEl);
     }

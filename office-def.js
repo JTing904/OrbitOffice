@@ -233,8 +233,23 @@ const OfficeDef = (() => {
     return { teams: CONTENT.teams.map(x => ({ id: x.id, name: x[L], color: x.color, style: x.style })), purpose: CONTENT.purpose[L], agents };
   }
 
+  // 把一份办公室定义（模板或 AI 生成的）放进一个新部门：id 都换成没被占用的，员工之间的引用跟着改
+  function intoDepartment(def, deptId, taken) {
+    const map = {};
+    const fresh = (id, prefix) => { const n = uniqueId(id, taken, prefix); taken.add(n); map[id] = n; return n; };
+    const teams = def.teams.map(tm => Object.assign({}, tm, { id: fresh(tm.id, "team"), dept: deptId }));
+    for (const a of def.agents) fresh(a.id, "agent");
+    const agents = def.agents.map(a => {
+      const { meta, body } = parse(a.text);
+      if (meta.team) meta.team = map[meta.team] || meta.team;
+      for (const k of ["send-results-to", "recheck-by", "no-ui-handoff"]) if (meta[k]) meta[k] = map[meta[k]] || meta[k];
+      return { id: map[a.id], text: serialize(meta, body) };
+    });
+    return { teams, agents };
+  }
+
   const TEMPLATES = ["software", "content"];
   const fromTemplate = (name, lang) => (name === "content" ? seedContent(lang) : seed(lang, {}));
 
-  return { parse, serialize, globToRegex, toAgent, metaOf, seed, fromTemplate, TEMPLATES, uniqueId, slug, asList, LOOK_NAMES, TEMPLATE_PURPOSE };
+  return { intoDepartment, parse, serialize, globToRegex, toAgent, metaOf, seed, fromTemplate, TEMPLATES, uniqueId, slug, asList, LOOK_NAMES, TEMPLATE_PURPOSE };
 })();

@@ -93,8 +93,12 @@ const ChatUI = (() => {
     if (!(window.desktop && desktop.agent && desktop.agent.say)) return false;
     const state = talk = { stop: false, typing: null };
     const order = [];
-    const lead = AGENTS.find(a => a.lead) || AGENTS[0];
-    for (const a of [lead, agentById(pickAgent(topic))].concat(AGENTS.filter(a => !a.specialist), AGENTS)) {
+    const first = agentById(pickAgent(topic));
+    const dept = DEPTS.length ? deptOf(first) : null;
+    const members = dept ? deptAgents(dept.id) : AGENTS;
+    const lead = dept ? deptLead(dept.id) : AGENTS.find(a => a.lead) || AGENTS[0];
+    if (dept) pushGroup({ sys: t("chat.deptTalk", { name: dept.name }) });
+    for (const a of [lead, first].concat(members.filter(a => !a.specialist), members)) {
       if (a && !a.removed && !order.includes(a)) order.push(a);
     }
     const speakers = order.slice(0, 5);
@@ -104,7 +108,7 @@ const ChatUI = (() => {
     for (const [i, a] of speakers.entries()) {
       if (state.stop) break;
       state.typing = a.id; render();
-      const r = await desktop.agent.say({ mode: "turn", first: i === 0, agentName: agentName(a), agentRole: agentRole(a), brief: a.brief, topic, transcript: transcript(), purpose: OFFICE.purpose, lang: LANG });
+      const r = await desktop.agent.say({ mode: "turn", first: i === 0, agentName: agentName(a), agentRole: agentRole(a), brief: a.brief, topic, transcript: transcript(), purpose: purposeOf(a), lang: LANG });
       if (state.stop) break;
       if (r.ok && r.text) pushGroup({ a: a.id, text: r.text });
       else { failed = r; break; }
@@ -113,7 +117,7 @@ const ChatUI = (() => {
       const p = lead;
       state.typing = p.id; render();
       const r = await desktop.agent.say({ mode: "plan", agentName: agentName(p), agentRole: agentRole(p), topic, transcript: transcript(),
-        team: teamList(null), purpose: OFFICE.purpose, lang: LANG });
+        team: dept ? members.map(x => x.id + ": " + agentName(x) + (agentRole(x) ? ", " + agentRole(x) : "")).join("; ") : teamList(null), purpose: purposeOf(p), lang: LANG });
       if (r.ok && !state.stop) {
         pushGroup({ a: p.id, text: r.summary, tag: "chat.tag.summary" });
         const tasks = (r.tasks || []).map(x => Object.assign({}, x, { to: resolveAgentId(x.to) })).filter(x => agentExists(x.to));
