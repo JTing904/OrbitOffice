@@ -701,7 +701,7 @@ ipcMain.handle("agent:compose", async (_e, req) => {
 ipcMain.handle("mcpserver:status", () => mcpServer.status());
 ipcMain.handle("mcpserver:set", async (_e, on) => {
   try {
-    if (on) await mcpServer.start(app.getPath("userData"), () => win); else mcpServer.stop();
+    if (on) await mcpServer.start(app.getPath("userData"), () => win, () => config.projectDir); else mcpServer.stop();
     config.mcpServer = !!on;
     saveConfig();
     return Object.assign({ ok: true }, mcpServer.status());
@@ -715,7 +715,7 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   app.on("second-instance", () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
   app.whenReady().then(() => { loadConfig(); localai.init(app.getPath("userData")); skills.init(app.getPath("userData")); createWindow(); config.connectors.forEach(startConn); autoStartLocal();
-    if (config.mcpServer) mcpServer.start(app.getPath("userData"), () => win).catch(e => console.error("MCP server:", e.message)); });
+    if (config.mcpServer) mcpServer.start(app.getPath("userData"), () => win, () => config.projectDir).catch(e => console.error("MCP server:", e.message)); });
   app.on("window-all-closed", () => app.quit());
   app.on("will-quit", () => { mcp.stopAll(); localai.stop(); mcpServer.stop(); });   // 连接器和本地 AI 启动的程序跟着 App 一起关
 }

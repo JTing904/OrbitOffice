@@ -1057,6 +1057,8 @@ function taskInfo(x) {
   return {
     id: x.id, title: taskTitle(x), status: x.status, agent: x.agentId, agentName: agentName(agentById(x.agentId)),
     waitingForApproval: x.status === "pending", step: x.status === "doing" ? (x.stepText || "") : "",
+    // 员工在 App 里问用户问题、或等用户批准某个操作：外面的 AI 等也没用，要用户在 App 里处理
+    needsUser: x.status === "pending" || (x.status === "doing" && [t("real.waiting.answer"), t("real.waiting.approve")].includes(x.stepText)),
     result: x.status === "done" ? String(x.result || "") : "", files: x.files || [], failed: !!x.failed,
     from: x.from || null, handedOffTo: tasks.filter(y => y.parent === x.id).map(y => ({ id: y.id, agent: y.agentId, status: y.status })),
   };

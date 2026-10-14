@@ -15,20 +15,24 @@ const MAX_BODY = 256 * 1024;
 const TOOLS = [
   { name: "list_agents", description: "List the departments, teams and agents in the OrbitOffice office, with each agent's role and whether it is busy right now.",
     inputSchema: { type: "object", properties: {} } },
-  { name: "assign_task", description: "Give the office a task, exactly like typing it into OrbitOffice's task bar. Without 'agent' the office picks the right agent. The task may wait for the user's approval in the app depending on the permission mode; agents ask the user in the app before risky actions. Returns the task id; poll get_task for progress.",
+  { name: "assign_task", description: "Give the office a task, exactly like typing it into OrbitOffice's task bar. Without 'agent' the office picks the right agent. The task may wait for the user's approval in the app depending on the permission mode; agents ask the user in the app before risky actions. Returns the task id; then call wait_task (not get_task in a loop) to get the result.",
     inputSchema: { type: "object", properties: {
       title: { type: "string", description: "What to do, in plain words." },
       agent: { type: "string", description: "Optional agent id or name to give it to." },
       department: { type: "string", description: "Optional department id or name; auto-assign picks inside it." } }, required: ["title"] } },
   { name: "get_task", description: "Status of a task: pending (waiting for the user's approval), queued, doing or done; the agent; current step; result summary; files written; failed flag; and the tasks it handed off to.",
     inputSchema: { type: "object", properties: { id: { type: "integer", description: "Task id from assign_task, chat or list_tasks." } }, required: ["id"] } },
+  { name: "wait_task", description: "Wait until a task is done (or until it needs the user, or the time runs out) and return its final state, so you do not have to call get_task again and again. Waits up to timeout_seconds (default 90, max 100); if it is not done yet, call wait_task again.",
+    inputSchema: { type: "object", properties: { id: { type: "integer" }, timeout_seconds: { type: "integer", minimum: 5, maximum: 100 } }, required: ["id"] } },
+  { name: "read_file", description: "Read a text file the agents wrote in OrbitOffice's project folder (for example a path from a task's files list). Read-only; only inside the project folder; up to 200 KB.",
+    inputSchema: { type: "object", properties: { path: { type: "string", description: "Path relative to the project folder, e.g. drafts/post.md" } }, required: ["path"] } },
   { name: "list_tasks", description: "The newest tasks (up to 30), optionally only one status.",
     inputSchema: { type: "object", properties: { status: { type: "string", enum: ["pending", "queued", "doing", "done"] } } } },
-  { name: "chat", description: "Talk to one agent directly, like the agent's chat in OrbitOffice. The agent answers or does the work; the reply arrives as the result of the returned task (poll get_task).",
+  { name: "chat", description: "Talk to one agent directly, like the agent's chat in OrbitOffice. The agent answers or does the work; the reply arrives as the result of the returned task (use wait_task).",
     inputSchema: { type: "object", properties: { agent: { type: "string", description: "Agent id or name." }, message: { type: "string" } }, required: ["agent", "message"] } },
 ];
 
-let server = null, port = null, token = null, getWin = null;
+let server = null, port = null, token = null, getWin = null, getProject = null;
 const pending = new Map();   // 调用 id -> { resolve, timer }
 let seq = 0;
 
@@ -67,6 +71,36 @@ function onResult(msg) {
   p.resolve(msg);
 }
 
+// 在这边等，而不是让外面的 AI 一直问：每 2 秒看一次，做完、要等用户批准、或时间到就回一次（大大省 token）
+async function waitTask(args) {
+  const limit = Math.min(100, Math.max(5, Number(args.timeout_seconds) || 90)) * 1000, t0 = Date.now();
+  for (;;) {
+    const r = await callRenderer("get_task", { id: args.id });
+    if (!r.ok) return r;
+    const x = r.result;
+    const settled = x.status === "done" || x.needsUser;
+    if (settled || Date.now() - t0 >= limit) return { ok: true, result: Object.assign({ timedOut: !settled }, x) };
+    await new Promise(res => setTimeout(res, 2000));
+  }
+}
+
+// 只读、只在项目文件夹里：外面的 AI 能拿到员工写的成果，但碰不到别的地方
+function readFile(args) {
+  const root = getProject && getProject();
+  if (!root) return { ok: false, error: "OrbitOffice has no project folder set" };
+  const rel = String(args.path || "").replace(/\\/g, "/").replace(/^\/+/, "");
+  const full = path.resolve(root, rel);
+  const inside = path.relative(path.resolve(root), full);
+  if (!rel || inside.startsWith("..") || path.isAbsolute(inside)) return { ok: false, error: "Only files inside the project folder can be read" };
+  let st;
+  try { st = fs.statSync(full); } catch (_) { return { ok: false, error: "No such file: " + rel }; }
+  if (!st.isFile()) return { ok: false, error: "Not a file: " + rel };
+  if (st.size > 200 * 1024) return { ok: false, error: "File is larger than 200 KB" };
+  const buf = fs.readFileSync(full);
+  if (buf.includes(0)) return { ok: false, error: "Not a text file" };
+  return { ok: true, result: { path: rel, content: buf.toString("utf8") } };
+}
+
 async function handle(msg) {
   const reply = result => ({ jsonrpc: "2.0", id: msg.id, result });
   const fail = (code, message) => ({ jsonrpc: "2.0", id: msg.id === undefined ? null : msg.id, error: { code, message } });
@@ -75,13 +109,14 @@ async function handle(msg) {
   switch (msg.method) {
     case "initialize":
       return reply({ protocolVersion: PROTOCOL, capabilities: { tools: {} }, serverInfo: { name: "OrbitOffice", version: require("../package.json").version },
-        instructions: "OrbitOffice is a 3D office of AI agents that do real work in the user's project folder. Use assign_task or chat, then poll get_task. Approvals happen in the OrbitOffice app, not here." });
+        instructions: "OrbitOffice is a 3D office of AI agents that do real work in the user's project folder. Use assign_task or chat, then wait_task for the result. Approvals happen in the OrbitOffice app, not here." });
     case "ping": return reply({});
     case "tools/list": return reply({ tools: TOOLS });
     case "tools/call": {
       const name = msg.params && msg.params.name;
       if (!TOOLS.some(x => x.name === name)) return fail(-32602, "Unknown tool: " + name);
-      const r = await callRenderer(name, msg.params.arguments);
+      const args = msg.params.arguments || {};
+      const r = name === "wait_task" ? await waitTask(args) : name === "read_file" ? readFile(args) : await callRenderer(name, args);
       return reply({ content: [{ type: "text", text: r.ok ? JSON.stringify(r.result, null, 2) : String(r.error || "Failed") }], isError: !r.ok });
     }
     default: return fail(-32601, "Method not found: " + msg.method);
@@ -125,9 +160,9 @@ function listenOn(p) {
 }
 
 // 被占用就试后面 10 个端口
-async function start(userData, winGetter) {
+async function start(userData, winGetter, projectGetter) {
   if (server) return status();
-  getWin = winGetter;
+  getWin = winGetter; getProject = projectGetter;
   token = loadToken(userData);
   for (let p = FIRST_PORT; p < FIRST_PORT + 11; p++) {
     try { server = await listenOn(p); port = p; return status(); } catch (e) { if (e.code !== "EADDRINUSE") throw e; }
