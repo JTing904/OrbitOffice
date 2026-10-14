@@ -89,4 +89,14 @@ contextBridge.exposeInMainWorld("desktop", {
     scanStatus: id => ipcRenderer.invoke("pool:scanStatus", id),
     usage: () => ipcRenderer.invoke("pool:usage"),
   },
+  // MCP Server
+  mcpServer: {
+    status: () => ipcRenderer.invoke("mcpserver:status"),
+    set: (enabled) => ipcRenderer.invoke("mcpserver:set", enabled),
+  },
+  // MCP Client (for server-to-renderer communication)
+  mcp: {
+    setHandler: handler => ipcRenderer.on("mcp:call", (_e, payload) => handler(payload)),
+    sendResult: (id, ok, result, error) => ipcRenderer.send("mcp:result", { id, ok, result, error }),
+  },
 });

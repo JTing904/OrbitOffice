@@ -1041,6 +1041,73 @@ async function loadOffice() {
   OFFICE.fromFiles = true;
 }
 
+// MCP 服务器的工具在这里执行（electron/mcp-server.js 把调用转过来）：和用户在任务栏、聊天里操作走同一条路，
+// 所以要批准的照样在 App 里弹窗，这里不替用户批准任何东西。
+function findAgent(q) {
+  const s = String(q || "").trim().toLowerCase();
+  if (!s) return null;
+  return AGENTS.find(a => a.id.toLowerCase() === s) || AGENTS.find(a => agentName(a).toLowerCase() === s)
+    || AGENTS.find(a => agentRole(a).toLowerCase() === s) || null;
+}
+function findDept(q) {
+  const s = String(q || "").trim().toLowerCase();
+  return s ? DEPTS.find(d => d.id.toLowerCase() === s || String(d.name || "").toLowerCase() === s) || null : null;
+}
+function taskInfo(x) {
+  return {
+    id: x.id, title: taskTitle(x), status: x.status, agent: x.agentId, agentName: agentName(agentById(x.agentId)),
+    waitingForApproval: x.status === "pending", step: x.status === "doing" ? (x.stepText || "") : "",
+    result: x.status === "done" ? String(x.result || "") : "", files: x.files || [], failed: !!x.failed,
+    from: x.from || null, handedOffTo: tasks.filter(y => y.parent === x.id).map(y => ({ id: y.id, agent: y.agentId, status: y.status })),
+  };
+}
+const MCP_TOOLS = {
+  list_agents() {
+    return {
+      departments: DEPTS.map(d => ({ id: d.id, name: d.name, lead: (deptLead(d.id) || {}).id || null })),
+      teams: TEAMS.map(x => ({ id: x.id, name: teamName(x), department: x.dept || null })),
+      agents: AGENTS.map(a => ({ id: a.id, name: agentName(a), role: agentRole(a), team: a.team, department: (deptOf(a) || {}).id || null,
+        busy: tasks.some(x => x.agentId === a.id && x.status === "doing") })),
+    };
+  },
+  assign_task({ title, agent, department }) {
+    const text = String(title || "").trim().slice(0, 500);
+    if (!text) throw new Error("title is required");
+    let choice = PICK_AUTO;
+    if (agent) { const a = findAgent(agent); if (!a) throw new Error("No agent called " + agent); choice = a.id; }
+    else if (department) { const d = findDept(department); if (!d) throw new Error("No department called " + department); choice = PICK_AUTO + ":" + d.id; }
+    const hand = document.getElementById("task-handoff");
+    const task = addTask(text, choice, hand ? hand.checked : true);   // 和任务栏一样，跟着「允许交接」的开关
+    return taskInfo(task);
+  },
+  get_task({ id }) {
+    const x = tasks.find(y => y.id === Number(id));
+    if (!x) throw new Error("No task with id " + id);
+    return taskInfo(x);
+  },
+  list_tasks({ status }) {
+    return tasks.filter(x => !status || x.status === status).slice(-30).reverse().map(x => ({ id: x.id, title: taskTitle(x), status: x.status, agent: x.agentId, failed: !!x.failed }));
+  },
+  chat({ agent, message }) {
+    const a = findAgent(agent);
+    if (!a) throw new Error("No agent called " + agent);
+    const text = String(message || "").trim().slice(0, 2000);
+    if (!text) throw new Error("message is required");
+    if (!chatToAgent(a.id, text, [], false)) throw new Error("Chat needs the desktop app");
+    return taskInfo(tasks[tasks.length - 1]);
+  },
+};
+if (DESKTOP && window.desktop.mcp) {
+  window.desktop.mcp.setHandler(({ id, tool, args }) => {
+    let reply;
+    try {
+      if (!MCP_TOOLS[tool]) throw new Error("Unknown tool: " + tool);
+      reply = { ok: true, result: MCP_TOOLS[tool](args || {}) };
+    } catch (e) { reply = { ok: false, error: String(e.message || e) }; }
+    window.desktop.mcp.sendResult(id, reply.ok, reply.result, reply.error);
+  });
+}
+
 // 页面上显示的 App 名字（桌面 App 里从 package.json 的 productName 来；浏览器里用页面里写的默认名）
 function applyAppName() {
   const name = window.desktop && desktop.appName;

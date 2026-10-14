@@ -754,6 +754,7 @@ const UI = (() => {
       d.caps.get().then(show);
       const targetHead = el("h4", "set-subhead", t("set.caps.targets"));
       caps.append(row(t("set.caps.commands"), sw), el("p", "set-note", t("set.caps.note")), blender, targetHead, targetWrap);
+      if (d.mcpServer) caps.append(...buildMcpServer(d.mcpServer));
     } else caps.append(el("p", "set-note", t("set.project.web")));
 
     // 连接器：接上外部工具
@@ -1267,6 +1268,42 @@ const UI = (() => {
   // ---------- 员工提问 / 请求批准（排队逐个显示）----------
   const askQueue = [];
   let asking = false;
+  // 让别的 AI 工具（Claude Code 等）通过 MCP 使用 OrbitOffice：开关 + 网址 + 密钥 + 一键复制设定
+  function buildMcpServer(api) {
+    const head = el("h4", "set-subhead", t("mcp.title"));
+    const sw = el("label", "switch");
+    const box = el("input");
+    box.type = "checkbox";
+    sw.append(box, el("span", "track"));
+    const info = el("div", "mcp-info");
+    const status = el("p", "set-status");
+    const copy = async (text, okKey) => {
+      try { await navigator.clipboard.writeText(text); toast(t(okKey), { kind: "ok", ttl: 3000 }); }
+      catch (_) { toast(t("mcp.copyFail"), { kind: "warn" }); }
+    };
+    const show = s => {
+      box.checked = !!s.on;
+      info.replaceChildren();
+      info.hidden = !s.on;
+      status.textContent = s.ok === false ? t("mcp.e.start", { error: s.error }) : "";
+      status.classList.toggle("bad", s.ok === false);
+      if (!s.on) return;
+      const masked = s.token.slice(0, 4) + "••••••••" + s.token.slice(-4);
+      const setup = "claude mcp add --transport http orbitoffice " + s.url + " --header \"Authorization: Bearer " + s.token + "\"";
+      const line = (label, value, btn) => { const r = el("div", "set-inline mcp-line"); r.append(el("span", "mcp-label", label), el("code", "set-path", value)); if (btn) r.append(btn); return r; };
+      info.append(
+        line(t("mcp.url"), s.url, button("ghost small", t("mcp.copy"), () => copy(s.url, "mcp.copied"))),
+        line(t("mcp.token"), masked, button("ghost small", t("mcp.copy"), () => copy(s.token, "mcp.copied"))),
+        el("div", "set-buttons", null),
+      );
+      info.lastChild.append(button("primary small", t("mcp.copySetup"), () => copy(setup, "mcp.setupCopied")));
+      info.append(el("p", "set-note", t("mcp.setupNote")));
+    };
+    box.addEventListener("change", async () => { box.disabled = true; const r = await api.set(box.checked); box.disabled = false; show(r); });
+    api.status().then(show);
+    return [head, row(t("mcp.switch"), sw), el("p", "set-note", t("mcp.note")), status, info];
+  }
+
   // App 内的确认框（代替 window.confirm：系统对话框和 App 的样子不搭，按钮也只有英文）
   // opts.danger：确认按钮变红，默认焦点放在「取消」，免得手快误删；opts.yes：确认按钮的文字
   let confirmBox = null;

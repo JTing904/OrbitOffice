@@ -18,11 +18,13 @@ const skills = require("./skills");
   const explicit = process.argv.some(x => x.startsWith("--user-data-dir"));   // 启动时指定了别的目录（例如测试）就听它的
   if (!explicit && fs.existsSync(path.join(legacy, "config.json"))) app.setPath("userData", legacy);
 }
+
+const mcpServer = require("./mcp-server");   // 让别的 AI 工具通过 MCP 使用 OrbitOffice（默认关闭）
 const APP_ICON = path.join(__dirname, "..", "assets", "icon", "icon.png");
 
 const CONFIG_FILE = () => path.join(app.getPath("userData"), "config.json");
 let win = null;
-let config = { projectDir: null, sources: [], caps: { commands: false }, connectors: [] };
+let config = { projectDir: null, sources: [], caps: { commands: false }, connectors: [], mcpServer: false };
 let savedProjectDir;   // 开发时用环境变量临时换了项目文件夹的话，这里记着真正该保存的值
 
 function loadConfig() {
@@ -695,12 +697,25 @@ ipcMain.handle("agent:compose", async (_e, req) => {
   } catch (err) { return { ok: false, error: "crash", detail: String(err.message || err) }; }
 });
 
+// MCP 服务器：开关存在 config.mcpServer 里，下次启动照样打开
+ipcMain.handle("mcpserver:status", () => mcpServer.status());
+ipcMain.handle("mcpserver:set", async (_e, on) => {
+  try {
+    if (on) await mcpServer.start(app.getPath("userData"), () => win); else mcpServer.stop();
+    config.mcpServer = !!on;
+    saveConfig();
+    return Object.assign({ ok: true }, mcpServer.status());
+  } catch (e) { return { ok: false, error: String(e.message || e), on: false }; }
+});
+ipcMain.on("mcp:result", (_e, msg) => mcpServer.onResult(msg));
+
 // 只允许一个实例
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on("second-instance", () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
-  app.whenReady().then(() => { loadConfig(); localai.init(app.getPath("userData")); skills.init(app.getPath("userData")); createWindow(); config.connectors.forEach(startConn); autoStartLocal(); });
+  app.whenReady().then(() => { loadConfig(); localai.init(app.getPath("userData")); skills.init(app.getPath("userData")); createWindow(); config.connectors.forEach(startConn); autoStartLocal();
+    if (config.mcpServer) mcpServer.start(app.getPath("userData"), () => win).catch(e => console.error("MCP server:", e.message)); });
   app.on("window-all-closed", () => app.quit());
-  app.on("will-quit", () => { mcp.stopAll(); localai.stop(); });   // 连接器和本地 AI 启动的程序跟着 App 一起关
+  app.on("will-quit", () => { mcp.stopAll(); localai.stop(); mcpServer.stop(); });   // 连接器和本地 AI 启动的程序跟着 App 一起关
 }

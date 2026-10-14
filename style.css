@@ -908,3 +908,9 @@ textarea.set-input { resize: vertical; line-height: 1.55; font-family: inherit; 
 /* App 内确认框：盖在其他弹窗（设置、大脑）上面 */
 .confirm-wrap { z-index: 60; }
 .confirm-wrap .ask { width: min(420px, calc(100vw - 32px)); }
+
+/* MCP 服务器设定 */
+.mcp-info { display: grid; gap: 8px; margin: 6px 0 4px; }
+.mcp-line { align-items: center; gap: 10px; }
+.mcp-label { min-width: 44px; color: var(--muted); font-size: 12.5px; }
+.mcp-line code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
