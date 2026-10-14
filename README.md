@@ -1,4 +1,4 @@
-![OrbitOffice office world](docs/img/world.jpg)
+![OrbitOffice office world](docs/img/hero-world.jpg)
 
 [中文说明](README.zh-CN.md)
 

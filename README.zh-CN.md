@@ -1,4 +1,4 @@
-![OrbitOffice 办公世界](docs/img/world.jpg)
+![OrbitOffice 办公世界](docs/img/hero-world.jpg)
 
 [English](README.md)
 

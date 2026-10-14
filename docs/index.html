@@ -1,146 +1,193 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OrbitOffice – Build your AI office</title>
-    <meta name="description" content="OrbitOffice lets you describe work and AI creates the office and agents. Departments share a 3D world, agents handoff work, use shared brain, skills, connectors, and your own AI keys or local AI.">
-    <!-- Open Graph -->
-    <meta property="og:title" content="OrbitOffice – Build your AI office">
-    <meta property="og:description" content="OrbitOffice lets you describe work and AI creates the office and agents.">
-    <meta property="og:image" content="https://jting904.github.io/OrbitOffice/docs/img/world.jpg">
-    <meta property="og:url" content="https://jting904.github.io/OrbitOffice/">
-    <meta property="og:type" content="website">
-    <!-- Twitter Card -->
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="OrbitOffice – Build your AI office">
-    <meta name="twitter:description" content="OrbitOffice lets you describe work and AI creates the office and agents.">
-    <meta name="twitter:image" content="https://jting904.github.io/OrbitOffice/docs/img/world.jpg">
-    <!-- Favicon -->
-    <link rel="icon" href="img/icon.svg" type="image/svg+xml">
-    <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OrbitOffice · Build your own AI office</title>
+  <meta name="description" content="OrbitOffice is a free Windows app: describe the team you need and AI builds a 3D office of agents that split the work, hand it off and write real files. Works with Claude Code through MCP.">
+  <meta property="og:title" content="OrbitOffice · Build your own AI office">
+  <meta property="og:description" content="Describe the team you need. AI builds the office. The team does real work in your folder.">
+  <meta property="og:image" content="https://jting904.github.io/OrbitOffice/img/hero-world.jpg">
+  <meta property="og:type" content="website">
+  <meta name="theme-color" content="#05070f">
+  <link rel="icon" href="img/icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- Hero Section -->
+  <div class="sky" aria-hidden="true"></div>
+
+  <header class="nav">
+    <a class="brand" href="#top"><img src="img/icon.svg" alt="" width="30" height="30"><span>OrbitOffice</span></a>
+    <nav class="nav-links">
+      <a href="#how">How it works</a>
+      <a href="#teams">Teams</a>
+      <a href="#mcp">MCP</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <a class="btn btn-small" href="https://github.com/JTing904/OrbitOffice/releases/latest">Download</a>
+  </header>
+
+  <main id="top">
+    <!-- 首屏 -->
     <section class="hero">
-        <div class="container">
-            <img src="img/icon.svg" alt="OrbitOffice logo" class="logo">
-            <h1>Build your AI office</h1>
-            <p>Describe your team and work, and AI creates the office and agents that split tasks, handoff, and write real files into your folder.</p>
-            <div class="hero-buttons">
-                <a href="https://github.com/JTing904/OrbitOffice/releases/latest" class="btn btn-primary" target="_blank" rel="noopener">Download for Windows</a>
-                <a href="https://github.com/JTing904/OrbitOffice" class="btn btn-secondary" target="_blank" rel="noopener">View on GitHub</a>
-            </div>
-            <img src="img/world.jpg" alt="OrbitOffice 3D world" class="hero-image">
+      <p class="eyebrow reveal">Free · Open source · Windows</p>
+      <h1 class="reveal">Build your own<br><span class="grad">AI office.</span></h1>
+      <p class="lede reveal">Describe the team you need in one sentence. OrbitOffice builds a 3D office of AI agents that split the work, hand it off to each other and write real files into your folder.</p>
+      <div class="cta reveal">
+        <a class="btn" href="https://github.com/JTing904/OrbitOffice/releases/latest">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.5 10 4.5v7H3zM11 4.4 21 3v8.5H11zM3 12.5h7v7l-7-1zM11 12.5h10V21l-10-1.4z"/></svg>
+          Download for Windows
+        </a>
+        <a class="btn btn-ghost" href="https://github.com/JTing904/OrbitOffice">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.39-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg>
+          View on GitHub
+        </a>
+      </div>
+      <div class="hero-stage reveal">
+        <div class="hero-frame">
+          <img src="img/hero-world.jpg" alt="Two departments, a software team and a content team, working in one 3D world" width="1600" height="1093">
         </div>
+        <span class="chip chip-a"><i style="--c:#34d399">P</i>Planner<em>writing plan.md</em></span>
+        <span class="chip chip-b"><i style="--c:#ec4899">C</i>Copywriter<em>drafting a post</em></span>
+        <span class="chip chip-c"><i style="--c:#2dd4bf">D</i>Developer<em>index.html ✓</em></span>
+      </div>
     </section>
 
-    <!-- How it works -->
-    <section class="how-it-works">
-        <div class="container">
-            <h2>How it works</h2>
-            <div class="steps">
-                <div class="step">
-                    <img src="img/build-with-ai.jpg" alt="Describe your team" class="step-img">
-                    <h3>1. Describe your team</h3>
-                    <p>Tell OrbitOffice what kind of team you need (software, marketing, content, etc.) and the work you want done.</p>
-                </div>
-                <div class="step">
-                    <img src="img/marketing-office.jpg" alt="AI builds the office" class="step-img">
-                    <h3>2. AI builds the office</h3>
-                    <p>The AI builds the teams and agents, each with a role and instructions. Or start from a ready-made template and edit any agent as a .md file.</p>
-                </div>
-                <div class="step">
-                    <img src="img/team-at-work.jpg" alt="The team does real work" class="step-img">
-                    <h3>3. The team does real work</h3>
-                    <p>Agents collaborate, handoff work, ask for clarification when needed, and write real files into your project folder.</p>
-                </div>
-            </div>
-        </div>
+    <!-- 影片 -->
+    <section class="film">
+      <div class="film-copy reveal">
+        <p class="eyebrow">44-second tour</p>
+        <h2>One sentence in.<br><span class="grad">Real work out.</span></h2>
+        <p>Every shot in this video is OrbitOffice really running: the AI building a marketing agency, a content team handing a post from strategist to copywriter to editor, and Claude Code giving the office a task through MCP.</p>
+      </div>
+      <div class="phone reveal">
+        <video src="media/reel.mp4" poster="media/reel-poster.jpg" autoplay muted loop playsinline preload="metadata" aria-label="OrbitOffice demo video"></video>
+      </div>
     </section>
 
-    <!-- Feature Grid -->
+    <!-- 怎么用 -->
+    <section class="how" id="how">
+      <div class="section-head reveal">
+        <p class="eyebrow">How it works</p>
+        <h2>From one sentence to a working team</h2>
+      </div>
+      <div class="row reveal">
+        <div class="row-copy">
+          <span class="num">01</span>
+          <h3>Describe your team</h3>
+          <p>“A marketing agency with strategy, creative and social media.” The AI writes the teams and every agent: role, skills, which files they may touch, and how they work. Or start from a ready-made template and edit any agent as a plain .md file.</p>
+        </div>
+        <div class="shot"><img src="img/step-describe.jpg" alt="The AI office builder showing three generated teams" loading="lazy"></div>
+      </div>
+      <div class="row row-flip reveal">
+        <div class="row-copy">
+          <span class="num">02</span>
+          <h3>Watch the office appear</h3>
+          <p>Each team gets its own island around a shared brain. Several departments can share one world, each with its own folder and its own lead, so coding and content never step on each other.</p>
+        </div>
+        <div class="shot"><img src="img/office-marketing.jpg" alt="A marketing agency office with three islands" loading="lazy"></div>
+      </div>
+      <div class="row reveal">
+        <div class="row-copy">
+          <span class="num">03</span>
+          <h3>Give them real work</h3>
+          <p>The lead splits the task, agents hand it to each other, ask you when something is missing, and write real files into your folder: plans, drafts, reviews, code. You see who is doing what, live.</p>
+        </div>
+        <div class="shot"><img src="img/step-work.jpg" alt="The content team at work, the editor reviewing a draft" loading="lazy"></div>
+      </div>
+    </section>
+
+    <!-- 什么团队都行 -->
+    <section class="teams" id="teams">
+      <div class="section-head reveal">
+        <p class="eyebrow">Any kind of team</p>
+        <h2>Software. Marketing. Content. <span class="grad">All in one world.</span></h2>
+      </div>
+      <div class="team-grid">
+        <figure class="team reveal"><img src="img/office-software.jpg" alt="Software team office" loading="lazy"><figcaption><b>Software team</b>Planner, designer, developers, tester, reviewer, DevOps and a security team.</figcaption></figure>
+        <figure class="team reveal"><img src="img/office-marketing.jpg" alt="Marketing agency office" loading="lazy"><figcaption><b>Marketing agency</b>Built by the AI from one sentence: strategy, creative and social media.</figcaption></figure>
+        <figure class="team reveal"><img src="img/office-content.jpg" alt="Content studio office" loading="lazy"><figcaption><b>Content studio</b>Strategist, copywriter, scriptwriter, editor and publisher.</figcaption></figure>
+      </div>
+    </section>
+
+    <!-- MCP -->
+    <section class="mcp" id="mcp">
+      <div class="mcp-copy reveal">
+        <p class="eyebrow">Works with your AI tools</p>
+        <h2>Already using Claude Code?<br><span class="grad">Plug it in with MCP.</span></h2>
+        <p>Turn on the MCP server and Claude Code, Cursor or any MCP client can hand tasks to your OrbitOffice team, wait for the result and read the files they wrote. It only listens on your computer, needs a key, and anything that needs approval still asks you inside OrbitOffice.</p>
+        <p class="hint">Settings → Permissions → <b>Copy Claude Code setup</b>, then paste it in a terminal.</p>
+      </div>
+      <div class="term reveal" aria-label="A real Claude Code session using OrbitOffice">
+        <div class="term-bar"><i></i><i></i><i></i><span>Claude Code</span></div>
+        <div class="term-body">
+          <p class="t-me"><b>&gt;</b> Use OrbitOffice to get the Copywriter to write a short Instagram caption for Brew Haven's new Midnight Mocha coffee.</p>
+          <p class="t-tool"><span>●</span> orbitoffice · <em>assign_task</em> → Copywriter</p>
+          <p class="t-tool"><span>●</span> orbitoffice · <em>wait_task</em></p>
+          <p class="t-ok">  ✓ done · Copywriter finished in 52s</p>
+          <p class="t-tool"><span>●</span> orbitoffice · <em>read_file</em> drafts/…midnight-mocha.md</p>
+          <p class="t-out">Your Friday just got richer: Midnight Mocha launches<small>#MidnightMocha #BrewHaven #CoffeeLovers</small></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 功能 -->
     <section class="features">
-        <div class="container">
-            <h2>Features</h2>
-            <div class="grid">
-                <div class="card">
-                    <h3>Departments in one world</h3>
-                    <p>Several departments share a single 3D world, enabling seamless collaboration and context sharing.</p>
-                </div>
-                <div class="card">
-                    <h3>Real files and handoffs</h3>
-                    <p>Agents write actual files into your folder and hand off work to each other, asking you when input is missing.</p>
-                </div>
-                <div class="card">
-                    <h3>Shared brain with skills and connectors</h3>
-                    <p>A central knowledge base holds skills (like Claude skills) and one‑click connectors for 33 services (Supabase, Vercel, Notion, etc.).</p>
-                </div>
-                <div class="card">
-                    <h3>Your own AI keys or built‑in local AI</h3>
-                    <p>Add free API keys from providers (Google Gemini, Groq, etc.) encrypted on your PC, or enable a local open model (Qwen3.5, Gemma 4, Granite) with no key needed.</p>
-                </div>
-                <div class="card">
-                    <h3>Permission modes</h3>
-                    <p>Choose Manual, Auto, or Full access to control AI autonomy. Publishing always asks for confirmation.</p>
-                </div>
-                <div class="card">
-                    <h3>Security team</h3>
-                    <p>An attacker tests your project for vulnerabilities (only targets you allow) and a security engineer fixes them.</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Works with your AI tools -->
-    <section class="works-with-ai">
-        <div class="container">
-            <h2>Works with your AI tools</h2>
-            <p>Turn on the MCP server and Claude Code, Cursor or any MCP client can hand tasks to your OrbitOffice team, wait for the result and read the files they wrote. It only listens on your computer, and approvals stay in OrbitOffice.</p>
-            <pre><code>claude mcp add --transport http orbitoffice http://127.0.0.1:47821/mcp --header "Authorization: Bearer &lt;your key&gt;"</code></pre>
-            <p class="note">Copy the exact command from Settings → Permissions.</p>
-        </div>
+      <div class="section-head reveal">
+        <p class="eyebrow">Everything else</p>
+        <h2>Built for real work, not demos</h2>
+      </div>
+      <div class="feat-grid">
+        <article class="feat reveal">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg>
+          <h3>Shared brain</h3>
+          <p>Project memory, a skills library with a skill store, and 33 one-click connectors such as Supabase, Vercel, Notion and Canva.</p>
+        </article>
+        <article class="feat reveal">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 11V7a5 5 0 0 1 10 0v4"/><rect x="4.5" y="11" width="15" height="10" rx="2.5"/><circle cx="12" cy="16" r="1.4"/></svg>
+          <h3>Your own AI</h3>
+          <p>Use free API keys from Gemini, NVIDIA NIM, Groq or OpenRouter, encrypted on your PC. Or run Qwen3.5, Gemma 4 or Granite locally with no key.</p>
+        </article>
+        <article class="feat reveal">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.4 7.5 9.5 4.3-1.1 7.5-4.9 7.5-9.5V6z"/><path d="m8.8 12 2.2 2.2 4.4-4.4"/></svg>
+          <h3>You stay in charge</h3>
+          <p>Manual, Auto or Full access. Agents only write inside your project folder, commands are opt-in, and publishing always asks first.</p>
+        </article>
+        <article class="feat reveal">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8 3.5 7.5v9L12 21.2l8.5-4.7v-9z"/><path d="M3.5 7.5 12 12l8.5-4.5M12 12v9.2"/></svg>
+          <h3>Security team</h3>
+          <p>An attacker tests your project for vulnerabilities, only on targets you allow, and a security engineer fixes what it finds.</p>
+        </article>
+      </div>
     </section>
 
     <!-- FAQ -->
-    <section class="faq">
-        <div class="container">
-            <h2>FAQ</h2>
-            <details>
-                <summary>Is OrbitOffice free?</summary>
-                <p>Yes. The app is free and open source (MIT License). You only pay for any external AI API usage if you choose to add your own keys; the built‑in local AI runs at no cost.</p>
-            </details>
-            <details>
-                <summary>Which AI models can I use?</summary>
-                <p>You can add API keys for Google Gemini, NVIDIA NIM, Groq, OpenRouter, any OpenAI‑compatible endpoint, or a local Ollama. The built‑in local AI offers Qwen3.5, Gemma 4, and Granite models that run on your machine without keys.</p>
-            </details>
-            <details>
-                <summary>Is my data safe?</summary>
-                <p>Your files stay on your computer. When you use a cloud AI, what the agents read and write is sent to that AI provider; with the built-in local AI nothing leaves your computer. API keys are stored encrypted on your PC and only sent to their own provider. OrbitOffice has no telemetry.</p>
-            </details>
-            <details>
-                <summary>Windows SmartScreen shows a warning – what should I do?</summary>
-                <p>OrbitOffice is not yet code‑signed, so SmartScreen may flag the installer. Click “More info”, then “Run anyway” to proceed.</p>
-            </details>
-        </div>
+    <section class="faq" id="faq">
+      <div class="section-head reveal"><h2>Questions</h2></div>
+      <details class="reveal"><summary>Is OrbitOffice free?</summary><p>Yes. It is free and open source under the MIT license. You only pay an AI provider if you choose a paid plan; free API tiers and the built-in local AI cost nothing.</p></details>
+      <details class="reveal"><summary>Which AI models can I use?</summary><p>Google Gemini, NVIDIA NIM, Groq, OpenRouter, a local Ollama or any OpenAI-compatible endpoint. The built-in local AI runs Qwen3.5, Gemma 4 and Granite models on your own machine, each tested to call tools correctly.</p></details>
+      <details class="reveal"><summary>Is my data safe?</summary><p>Your files stay on your computer. When you use a cloud AI, what the agents read and write is sent to that AI provider; with the built-in local AI nothing leaves your computer. API keys are stored encrypted on your PC and only sent to their own provider. OrbitOffice has no telemetry.</p></details>
+      <details class="reveal"><summary>Windows SmartScreen warns about the installer. What do I do?</summary><p>OrbitOffice is not code-signed yet, so SmartScreen may show a warning. Click “More info”, then “Run anyway”.</p></details>
     </section>
 
-    <!-- Footer -->
-    <footer>
-        <div class="container">
-            <p>&copy; <span id="year"></span> OrbitOffice. Licensed under the <a href="https://github.com/JTing904/OrbitOffice/blob/main/LICENSE.md" target="_blank" rel="noopener">MIT License</a>.</p>
-            <div class="footer-links">
-                <a href="https://github.com/JTing904/OrbitOffice" target="_blank" rel="noopener">GitHub: JTing904</a>
-                <a href="https://instagram.com/jtinnnng" target="_blank" rel="noopener">Instagram: @jtinnnng</a>
-            </div>
-        </div>
-    </footer>
+    <!-- 最后的下载 -->
+    <section class="final reveal">
+      <img src="img/icon.svg" alt="" width="84" height="84">
+      <h2>Your AI team, <span class="grad">in orbit.</span></h2>
+      <a class="btn" href="https://github.com/JTing904/OrbitOffice/releases/latest">Download for Windows</a>
+    </section>
+  </main>
 
-    <script>
-        // Set current year in footer
-        document.getElementById('year').textContent = new Date().getFullYear();
-    </script>
+  <footer class="foot">
+    <span>© <span id="year">2026</span> OrbitOffice · MIT License</span>
+    <span class="foot-links">
+      <a href="https://github.com/JTing904">GitHub · JTing904</a>
+      <a href="https://instagram.com/jtinnnng">Instagram · @jtinnnng</a>
+    </span>
+  </footer>
+  <script src="script.js"></script>
 </body>
 </html>
